@@ -268,7 +268,8 @@ function App() {
     while (attempts < maxAttempts && !success) {
       try {
         // Attempt to fetch topics - this pings the server
-        await getTopics()
+        // Provide a long timeout (75 seconds) specifically for the wakeup process
+        await getTopics({ timeoutMs: 75000 })
         success = true
       } catch (err) {
         attempts++
