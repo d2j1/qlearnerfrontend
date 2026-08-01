@@ -2,6 +2,7 @@ import { CheckCircle2, XCircle } from 'lucide-react'
 
 function OptionButton({
   correctOptionIndex,
+  correctOptionIndices,
   disabled,
   isSelected,
   isAnswered,
@@ -10,7 +11,9 @@ function OptionButton({
   optionIndex,
   selectedCorrectly,
 }) {
-  const isCorrectOption = isAnswered && optionIndex === correctOptionIndex
+  const isCorrectOption =
+    isAnswered &&
+    (correctOptionIndices?.includes(optionIndex) || optionIndex === correctOptionIndex)
   const isIncorrectSelection = isAnswered && isSelected && !selectedCorrectly
 
   const baseClass =

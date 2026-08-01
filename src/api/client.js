@@ -66,21 +66,32 @@ export async function request(path, { method = 'GET', body, headers = {}, signal
 
     if (!response.ok) {
       const message =
-        parsedBody?.message || parsedBody?.error || `Request failed with status ${response.status}.`
-      throw new ApiError(message, { status: response.status, details: parsedBody })
+        parsedBody?.message || parsedBody?.error || parsedBody?.detail || `Request failed with status ${response.status}.`
+      const apiError = new ApiError(message, { status: response.status, details: parsedBody })
+      console.error('API Request Failed:', {
+        path,
+        status: response.status,
+        message,
+        details: parsedBody,
+      })
+      throw apiError
     }
 
     return parsedBody
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new ApiError('The request timed out. Please try again.', { isTimeout: true })
+      const apiError = new ApiError('The request timed out. Please try again.', { isTimeout: true })
+      console.error('API Request Timed Out:', { path, error: apiError })
+      throw apiError
     }
 
     if (error instanceof ApiError) {
       throw error
     }
 
-    throw new ApiError(error?.message || 'Network request failed.')
+    const apiError = new ApiError(error?.message || 'Network request failed.')
+    console.error('Network Request Failed:', { path, error: apiError })
+    throw apiError
   } finally {
     clearTimeout(timeoutId)
 
@@ -127,7 +138,7 @@ export function patchQuestion(questionId, fields, options = {}) {
 export function renameTopic(topic, nextName, options = {}) {
   return request(`/api/topics/${encodeURIComponent(topic)}/rename`, {
     method: 'PUT',
-    body: { next_name: nextName },
+    body: { new_topic: nextName },
     ...options,
   })
 }
@@ -135,7 +146,7 @@ export function renameTopic(topic, nextName, options = {}) {
 export function renameSubtopic(topic, subtopic, nextName, options = {}) {
   return request(`/api/topics/${encodeURIComponent(topic)}/subtopics/${encodeURIComponent(subtopic)}/rename`, {
     method: 'PUT',
-    body: { next_name: nextName },
+    body: { new_subtopic: nextName },
     ...options,
   })
 }

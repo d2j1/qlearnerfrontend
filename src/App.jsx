@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, ChevronRight } from 'lucide-react'
+import { BookOpen, ChevronRight, Loader2 } from 'lucide-react'
 import {
   bulkIngestQuestions,
   getQuestionById,
@@ -68,7 +68,11 @@ function normalizeSubtopics(payload) {
       ? payload.subtopics
       : Array.isArray(payload?.data)
         ? payload.data
-        : []
+        : Array.isArray(payload?.topics)
+          ? payload.topics
+          : Array.isArray(payload?.groups)
+            ? payload.groups
+            : []
 
   return groups
     .flatMap((group) => {
@@ -94,6 +98,11 @@ function getQuestionId(question) {
 }
 
 function App() {
+  const [appState, setAppState] = useState('welcome') // 'welcome' | 'waking' | 'ready'
+  const [wakeProgress, setWakeProgress] = useState(0)
+  const [wakeStatus, setWakeStatus] = useState('Ready to boot')
+  const [wakeError, setWakeError] = useState('')
+
   const [topics, setTopics] = useState([])
   const [subtopics, setSubtopics] = useState([])
   const [selectedTopic, setSelectedTopic] = useState(ALL_TOPICS)
@@ -222,7 +231,72 @@ function App() {
     }
   }, [runWithWarmup])
 
+  const handleWakeUp = async () => {
+    setAppState('waking')
+    setWakeProgress(0)
+    setWakeStatus('Sending wakeup signal to Render server...')
+    setWakeError('')
+
+    // Start simulated progress bar (takes about 50 seconds to hit ~95%)
+    let currentProgress = 0
+    const progressInterval = setInterval(() => {
+      currentProgress += 2
+      if (currentProgress > 95) {
+        currentProgress = 95
+      }
+      setWakeProgress(currentProgress)
+
+      // Change status text based on progress
+      if (currentProgress < 20) {
+        setWakeStatus('Sending wakeup signal to Render server...')
+      } else if (currentProgress < 40) {
+        setWakeStatus('Spinning up virtual environment containers...')
+      } else if (currentProgress < 60) {
+        setWakeStatus('Connecting to MongoDB database instance...')
+      } else if (currentProgress < 80) {
+        setWakeStatus('Synchronizing MCQ collections and indexes...')
+      } else {
+        setWakeStatus('Waiting for final server handshake...')
+      }
+    }, 1000)
+
+    // Ping loop
+    let attempts = 0
+    const maxAttempts = 30
+    let success = false
+
+    while (attempts < maxAttempts && !success) {
+      try {
+        // Attempt to fetch topics - this pings the server
+        await getTopics()
+        success = true
+      } catch (err) {
+        attempts++
+        // Wait 2.5 seconds before next attempt
+        await new Promise((resolve) => setTimeout(resolve, 2500))
+      }
+    }
+
+    clearInterval(progressInterval)
+
+    if (success) {
+      setWakeProgress(100)
+      setWakeStatus('Connection established successfully!')
+      // Wait a moment so the user sees 100% progress
+      setTimeout(() => {
+        setAppState('ready')
+      }, 800)
+    } else {
+      setWakeError('Server wakeup timed out or failed. Render free tier might be experiencing high load. Please try again.')
+      setAppState('welcome')
+    }
+  }
+
   useEffect(() => {
+    if (appState !== 'ready') {
+      return
+    }
+
     let cancelled = false
 
     const bootstrap = async () => {
@@ -246,7 +320,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [loadQuestions, loadTopics])
+  }, [appState, loadQuestions, loadTopics])
 
   const handleSelectTopic = async (topic) => {
     setSelectedTopic(topic)
@@ -281,7 +355,9 @@ function App() {
       return
     }
 
-    const isCorrect = optionIndex === question.correct_option_index
+    const isCorrect =
+      question.correct_option_indices?.includes(optionIndex) ||
+      optionIndex === question.correct_option_index
     setAnswerMap((previous) => ({
       ...previous,
       [questionId]: {
@@ -408,6 +484,87 @@ function App() {
     } catch (renameError) {
       setAdminMessage(renameError.message || 'Subtopic rename failed.')
     }
+  }
+
+  if (appState !== 'ready') {
+    return (
+      <div className="min-h-screen bg-[#07111f] text-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden">
+        {/* Background Gradients */}
+        <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_center,_rgba(14,165,233,0.15),_transparent_50%),linear-gradient(180deg,_#08101c_0%,_#050915_100%)]" />
+        <div className="fixed inset-0 -z-10 bg-[linear-gradient(rgba(148,163,184,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.05)_1px,transparent_1px)] bg-[size:32px_32px] opacity-25" />
+
+        <div className="w-full max-w-xl text-center space-y-8 relative">
+          {/* Logo & Header */}
+          <div className="space-y-4">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[2rem] border border-cyan-400/40 bg-gradient-to-br from-cyan-500/20 to-emerald-500/10 text-cyan-300 shadow-[0_0_50px_rgba(34,211,238,0.25)] animate-pulse">
+              <BookOpen className="h-10 w-10 text-cyan-300" />
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-300 via-sky-200 to-emerald-300 bg-clip-text text-transparent">
+              QLearner App
+            </h1>
+            <p className="text-slate-400 text-base sm:text-lg max-w-md mx-auto leading-relaxed">
+              Your advanced workspace for masterclass MCQ practice, flashcards, and step-by-step solutions.
+            </p>
+          </div>
+
+          {/* Main Card */}
+          <div className="rounded-[2rem] border border-slate-800 bg-slate-950/70 p-6 sm:p-8 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl space-y-6">
+            {appState === 'welcome' ? (
+              <>
+                <div className="space-y-3">
+                  <h2 className="text-xl font-semibold text-white">Database Server Status</h2>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    The backend API is hosted on a Render free instance, which automatically goes to sleep after inactivity.
+                    Waking it up takes about <span className="text-cyan-300 font-semibold">45-60 seconds</span>.
+                  </p>
+                </div>
+
+                {wakeError && (
+                  <div className="flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-left text-sm text-rose-200">
+                    <span className="shrink-0 text-rose-400 font-bold">⚠️</span>
+                    <p>{wakeError}</p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleWakeUp}
+                  className="w-full flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-400 hover:from-cyan-400 hover:to-emerald-300 text-slate-950 px-6 py-4 text-base font-bold shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  🚀 Wake Up Server & Start
+                </button>
+              </>
+            ) : (
+              <div className="space-y-6 py-4">
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-white">Initializing Environment</h3>
+                  <p className="text-xs font-mono text-cyan-300 animate-pulse">{wakeStatus}</p>
+                </div>
+
+                {/* Progress Bar Container */}
+                <div className="space-y-2">
+                  <div className="h-3 w-full bg-slate-900 rounded-full overflow-hidden p-[2px] border border-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400 transition-all duration-500 ease-out"
+                      style={{ width: `${wakeProgress}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-400 font-mono">
+                    <span>PROGRESS</span>
+                    <span className="text-cyan-300 font-semibold">{wakeProgress}%</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-xs text-slate-500 mt-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+                  <span>Please keep this page open. Waking virtual machines...</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

@@ -38,6 +38,7 @@ function QuestionCard({
           <OptionButton
             key={option.index}
             correctOptionIndex={currentQuestion.correct_option_index}
+            correctOptionIndices={currentQuestion.correct_option_indices}
             disabled={isAnswered}
             isAnswered={isAnswered}
             isSelected={currentSelection?.optionIndex === option.index}
