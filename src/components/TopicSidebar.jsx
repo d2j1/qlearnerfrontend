@@ -4,10 +4,13 @@ function TopicSidebar({
   allTopicsLabel,
   currentTopic,
   currentSubtopic,
+  className = '',
   loading,
   onSelectAllTopics,
   onSelectSubtopic,
   onSelectTopic,
+  panelClassName = '',
+  topicListClassName = '',
   subtopics,
   topics,
 }) {
@@ -19,8 +22,8 @@ function TopicSidebar({
     }`
 
   return (
-    <aside className="w-full lg:w-[320px] lg:shrink-0">
-      <div className="sticky top-24 space-y-4 rounded-[1.75rem] border border-slate-700/80 bg-slate-950/75 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl">
+    <aside className={`w-full lg:w-[320px] lg:shrink-0 ${className}`}>
+      <div className={`sticky top-24 space-y-4 rounded-[1.75rem] border border-slate-700/80 bg-slate-950/75 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl ${panelClassName}`}>
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Browse</p>
           <h2 className="mt-1 text-xl font-semibold text-white">Topics & subtopics</h2>
@@ -34,7 +37,7 @@ function TopicSidebar({
           <ChevronRight className="h-4 w-4" />
         </button>
 
-        <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+        <div className={`max-h-[28rem] space-y-2 overflow-y-auto pr-1 ${topicListClassName}`}>
           {loading ? (
             <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 px-4 py-6 text-sm text-slate-400">
               Loading topics...

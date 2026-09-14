@@ -134,6 +134,8 @@ function App() {
     subtopic: '',
     nextName: '',
   })
+  const [topicDrawerOpen, setTopicDrawerOpen] = useState(false)
+  const [focusModeOpen, setFocusModeOpen] = useState(false)
   const spinnerTimerRef = useRef(null)
 
   const currentQuestion = questions[currentIndex]
@@ -150,6 +152,22 @@ function App() {
 
     return `${selectedTopic} / ${selectedSubtopic}`
   }, [selectedSubtopic, selectedTopic])
+
+  useEffect(() => {
+    if (!focusModeOpen) {
+      return undefined
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setFocusModeOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [focusModeOpen])
 
   const stopWarmupTimer = useCallback(() => {
     if (spinnerTimerRef.current) {
@@ -264,6 +282,7 @@ function App() {
     let attempts = 0
     const maxAttempts = 30
     let success = false
+    let lastError = null
 
     while (attempts < maxAttempts && !success) {
       try {
@@ -273,6 +292,7 @@ function App() {
         success = true
       } catch (err) {
         attempts++
+        lastError = err
         // Wait 2.5 seconds before next attempt
         await new Promise((resolve) => setTimeout(resolve, 2500))
       }
@@ -288,7 +308,8 @@ function App() {
         setAppState('ready')
       }, 800)
     } else {
-      setWakeError('Server wakeup timed out or failed. Render free tier might be experiencing high load. Please try again.')
+      const errorDetail = lastError?.message ? ` Details: ${lastError.message}` : '';
+      setWakeError(`Server wakeup timed out or failed. ${errorDetail} Render free tier might be experiencing high load or blocked by CORS. Please try again.`);
       setAppState('welcome')
     }
   }
@@ -330,6 +351,7 @@ function App() {
     setCurrentIndex(0)
     setHasMore(true)
     setAnswerMap({})
+    setTopicDrawerOpen(false)
 
     if (topic === ALL_TOPICS) {
       setSubtopics([])
@@ -347,6 +369,7 @@ function App() {
     setCurrentIndex(0)
     setHasMore(true)
     setAnswerMap({})
+    setTopicDrawerOpen(false)
     await loadQuestions({ topic: selectedTopic, subtopic, offset: 0, append: false })
   }
 
@@ -569,7 +592,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07111f] text-slate-100">
+    <div className="flex min-h-[100dvh] flex-col overflow-hidden bg-[#07111f] text-slate-100">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,_rgba(12,132,199,0.25),_transparent_38%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.2),_transparent_30%),linear-gradient(180deg,_#08101c_0%,_#050915_100%)]" />
       <div className="fixed inset-0 -z-10 bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] bg-[size:42px_42px] opacity-30" />
 
@@ -578,11 +601,14 @@ function App() {
         isBusy={topicsLoading || questionsLoading}
         isWarmup={spinnerUp}
         onRefresh={handleRefresh}
+        onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
         onToggleAdmin={() => setAdminOpen((previous) => !previous)}
+        isFocusMode={focusModeOpen}
       />
 
-      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-8 pt-4 lg:flex-row lg:px-6">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4 pt-3 lg:flex-row lg:gap-6 lg:px-6">
         <TopicSidebar
+          className="hidden lg:block"
           allTopicsLabel={ALL_TOPICS}
           currentTopic={selectedTopic}
           currentSubtopic={selectedSubtopic}
@@ -594,8 +620,15 @@ function App() {
           topics={topics}
         />
 
-        <section className="min-w-0 flex-1">
-          <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-slate-300">
+        <section className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-300 sm:mb-4 sm:gap-3 sm:text-sm">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-cyan-100 lg:hidden"
+              onClick={() => setTopicDrawerOpen(true)}
+            >
+              Browse topics
+            </button>
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/50 px-3 py-1.5 backdrop-blur">
               <BookOpen className="h-4 w-4 text-cyan-300" />
               {questions.length ? `${currentIndex + 1} of ${questions.length}` : 'No questions loaded yet'}
@@ -612,43 +645,130 @@ function App() {
           </div>
 
           {error ? (
-            <div className="mb-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            <div className="mb-3 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100 sm:mb-4">
               {error}
             </div>
           ) : null}
 
           {spinnerUp ? (
-            <div className="mb-4 rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100 shadow-[0_0_40px_rgba(14,165,233,0.12)]">
+            <div className="mb-3 rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100 shadow-[0_0_40px_rgba(14,165,233,0.12)] sm:mb-4">
               Spinning up backend... this may take a moment on cold starts.
             </div>
           ) : null}
 
-          {currentQuestion ? (
-            <QuestionCard
-              currentIndex={currentIndex}
-              currentQuestion={currentQuestion}
-              currentSelection={currentAnswer}
-              hasMore={hasMore}
-              isLoading={questionsLoading}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              onSelectOption={handleSelectOption}
-              questionsCount={questions.length}
-            />
-          ) : (
-            <div className="rounded-[2rem] border border-slate-700/60 bg-slate-950/70 p-8 text-center shadow-2xl shadow-cyan-950/10 backdrop-blur-xl">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-cyan-300">
-                <BookOpen className="h-8 w-8" />
+          <div className="min-h-0 flex-1">
+            {currentQuestion ? (
+              <QuestionCard
+                currentIndex={currentIndex}
+                currentQuestion={currentQuestion}
+                currentSelection={currentAnswer}
+                hasMore={hasMore}
+                isLoading={questionsLoading}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onSelectOption={handleSelectOption}
+                questionsCount={questions.length}
+              />
+            ) : (
+              <div className="flex h-full min-h-0 items-center justify-center rounded-[2rem] border border-slate-700/60 bg-slate-950/70 p-6 text-center shadow-2xl shadow-cyan-950/10 backdrop-blur-xl sm:p-8">
+                <div>
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-cyan-300">
+                    <BookOpen className="h-8 w-8" />
+                  </div>
+                  <h2 className="text-2xl font-semibold text-white">Pick a topic to start practicing</h2>
+                  <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
+                    The app will fetch topics on load, then stream questions with instant feedback, explanation cards,
+                    and pagination-aware navigation.
+                  </p>
+                </div>
               </div>
-              <h2 className="text-2xl font-semibold text-white">Pick a topic to start practicing</h2>
-              <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                The app will fetch topics on load, then stream questions with instant feedback, explanation cards,
-                and pagination-aware navigation.
-              </p>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       </main>
+
+      {focusModeOpen ? (
+        <div className="fixed inset-0 z-30 bg-slate-950/95 px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4">
+          <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-3 overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950/80 p-3 shadow-2xl shadow-black/40 sm:p-4">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Focus mode</p>
+                <p className="mt-1 text-sm text-slate-400">Only the question, answers, explanation, and navigation are shown.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 transition hover:border-cyan-400 hover:text-cyan-200"
+                onClick={() => setFocusModeOpen(false)}
+              >
+                Exit focus
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1">
+              {currentQuestion ? (
+                <QuestionCard
+                  currentIndex={currentIndex}
+                  currentQuestion={currentQuestion}
+                  currentSelection={currentAnswer}
+                  hasMore={hasMore}
+                  immersive
+                  isLoading={questionsLoading}
+                  onNext={handleNext}
+                  onPrevious={handlePrevious}
+                  onSelectOption={handleSelectOption}
+                  questionsCount={questions.length}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-[2rem] border border-dashed border-slate-700 bg-slate-950/60 p-8 text-center text-slate-300">
+                  No question loaded yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {topicDrawerOpen ? (
+        <div className="fixed inset-0 z-20 flex lg:hidden">
+          <button
+            type="button"
+            className="flex-1 bg-slate-950/75 backdrop-blur-sm"
+            aria-label="Close topics drawer"
+            onClick={() => setTopicDrawerOpen(false)}
+          />
+          <aside className="h-full w-full max-w-sm overflow-hidden border-l border-slate-700 bg-slate-950 p-4 shadow-2xl shadow-black/30">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Browse</p>
+                <h2 className="mt-1 text-xl font-semibold text-white">Topics & subtopics</h2>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-cyan-200"
+                onClick={() => setTopicDrawerOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="h-[calc(100%-3.5rem)] overflow-y-auto pr-1">
+              <TopicSidebar
+                className="w-full"
+                panelClassName="top-0 rounded-[1.5rem] border-slate-700/80 bg-slate-950/95 p-4 backdrop-blur-xl"
+                topicListClassName="max-h-none"
+                allTopicsLabel={ALL_TOPICS}
+                currentTopic={selectedTopic}
+                currentSubtopic={selectedSubtopic}
+                loading={topicsLoading}
+                onSelectSubtopic={handleSelectSubtopic}
+                onSelectTopic={handleSelectTopic}
+                onSelectAllTopics={() => handleSelectTopic(ALL_TOPICS)}
+                subtopics={subtopics}
+                topics={topics}
+              />
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       {adminOpen ? (
         <div className="fixed inset-0 z-20 flex justify-end bg-slate-950/70 backdrop-blur-sm">

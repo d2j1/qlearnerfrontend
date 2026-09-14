@@ -1,6 +1,6 @@
 import { BookOpen, RefreshCw } from 'lucide-react'
 
-function Navbar({ currentSelection, isBusy, isWarmup, onRefresh, onToggleAdmin }) {
+function Navbar({ currentSelection, isBusy, isWarmup, onRefresh, onToggleAdmin, onToggleFocus, isFocusMode }) {
   return (
     <header className="sticky top-0 z-10 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 lg:px-6">
@@ -29,6 +29,13 @@ function Navbar({ currentSelection, isBusy, isWarmup, onRefresh, onToggleAdmin }
           >
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline">Refresh</span>
+          </button>
+          <button
+            type="button"
+            className="rounded-2xl border border-cyan-400/30 bg-cyan-500/15 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-400/20"
+            onClick={onToggleFocus}
+          >
+            {isFocusMode ? 'Exit Focus' : 'Focus'}
           </button>
           <button
             type="button"
