@@ -265,4 +265,102 @@ export function testModel(id, prompt, options = {}) {
   })
 }
 
+// Notes (admin)
+export function listNotes({ topic, subtopic, limit, offset } = {}, options = {}) {
+  return request(`/api/notes${buildQueryString({ topic, subtopic, limit, offset })}`, options)
+}
+
+export function getNote(id, options = {}) {
+  return request(`/api/notes/${enc(id)}`, options)
+}
+
+export function createNote(body, options = {}) {
+  return request('/api/notes', { method: 'POST', body, ...options })
+}
+
+export function updateNote(id, patch, options = {}) {
+  return request(`/api/notes/${enc(id)}`, { method: 'PATCH', body: patch, ...options })
+}
+
+export function deleteNote(id, options = {}) {
+  return request(`/api/notes/${enc(id)}`, { method: 'DELETE', ...options })
+}
+
+// Prompt templates (admin); append-only, versioned per name
+export function listPrompts(allVersions = false, options = {}) {
+  return request(`/api/prompts${buildQueryString({ all_versions: allVersions })}`, options)
+}
+
+export function getPrompt(id, options = {}) {
+  return request(`/api/prompts/${enc(id)}`, options)
+}
+
+export function createPrompt(body, options = {}) {
+  return request('/api/prompts', { method: 'POST', body, ...options })
+}
+
+export function setDefaultPrompt(id, options = {}) {
+  return request(`/api/prompts/${enc(id)}/default`, { method: 'POST', ...options })
+}
+
+export function getPromptPlaceholders(options = {}) {
+  return request('/api/prompts/placeholders', options)
+}
+
+// Generation jobs (admin)
+export function createJob(body, options = {}) {
+  return request('/api/generation/jobs', { method: 'POST', body, ...options })
+}
+
+export function getJob(id, options = {}) {
+  return request(`/api/generation/jobs/${enc(id)}`, options)
+}
+
+export function listJobs({ status, limit, offset } = {}, options = {}) {
+  return request(`/api/generation/jobs${buildQueryString({ status, limit, offset })}`, options)
+}
+
+// Polls 2s, 3s, 4s, then every 5s until the job finishes or the signal aborts.
+export async function pollJob(id, onUpdate, signal) {
+  let delay = 2000
+  for (;;) {
+    if (signal?.aborted) {
+      return null
+    }
+    const job = await getJob(id, { signal })
+    onUpdate(job)
+    if (job.status === 'succeeded' || job.status === 'failed') {
+      return job
+    }
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    delay = Math.min(delay + 1000, 5000)
+  }
+}
+
+// Draft review (admin)
+export function listDrafts({ job_id, topic, subtopic, limit, offset } = {}, options = {}) {
+  return request(`/api/questions/drafts${buildQueryString({ job_id, topic, subtopic, limit, offset })}`, options)
+}
+
+export function approveQuestion(id, options = {}) {
+  return request(`/api/questions/${enc(id)}/approve`, { method: 'POST', ...options })
+}
+
+export function rejectQuestion(id, options = {}) {
+  return request(`/api/questions/${enc(id)}/reject`, { method: 'POST', ...options })
+}
+
+// Waits for the LLM (~10-20 s); returns a new draft with a new id.
+export function regenerateQuestion(id, options = {}) {
+  return request(`/api/questions/${enc(id)}/regenerate`, { method: 'POST', timeoutMs: 90000, ...options })
+}
+
+export function approveQuestions(ids, options = {}) {
+  return request('/api/questions/approve', { method: 'POST', body: { ids }, ...options })
+}
+
+export function rejectQuestions(ids, options = {}) {
+  return request('/api/questions/reject', { method: 'POST', body: { ids }, ...options })
+}
+
 export { API_BASE_URL }

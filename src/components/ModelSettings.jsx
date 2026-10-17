@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Plus, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, Plus, XCircle } from 'lucide-react'
 import { createModel, deleteModel, listModels, testModel, updateModel } from '../api/client'
 
 const inputClass =
@@ -357,7 +357,7 @@ function TestPanel({ model }) {
   )
 }
 
-function ModelSettings({ onBack }) {
+function ModelSettings() {
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [slow, setSlow] = useState(false)
@@ -421,12 +421,7 @@ function ModelSettings({ onBack }) {
   if (loadError?.status === 403) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-center">
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-white">Admin access required</h2>
-          <button type="button" className={smallButtonClass} onClick={onBack}>
-            Back to practice
-          </button>
-        </div>
+        <h2 className="text-2xl font-semibold text-white">Admin access required</h2>
       </div>
     )
   }
@@ -435,12 +430,9 @@ function ModelSettings({ onBack }) {
   const hasEnabled = models.some((model) => model.enabled)
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-4 pb-8 pt-4 lg:px-6">
+    <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <button type="button" className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-cyan-200" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4" /> Back to practice
-          </button>
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Settings</p>
           <h1 className="mt-1 text-2xl font-semibold text-white">Models</h1>
           <p className="mt-1 text-sm text-slate-400">LLM configs used to generate questions.</p>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookOpen, ChevronRight, Loader2 } from 'lucide-react'
 import {
   bulkIngestQuestions,
@@ -17,14 +17,17 @@ import {
   tokenStore,
 } from './api/client'
 import AuthModal from './components/AuthModal'
-import ModelSettings from './components/ModelSettings'
+import { isAdminPath } from './components/admin/helpers'
 import Navbar from './components/Navbar'
 import QuestionCard from './components/QuestionCard'
 import TopicSidebar from './components/TopicSidebar'
+import { navigate, useLocation } from './lib/router'
+
+// Admin screens pull in markdown + syntax highlighting; learners never download them.
+const AdminShell = lazy(() => import('./components/admin/AdminShell'))
 
 const PAGE_SIZE = 8
 const ALL_TOPICS = 'All Topics'
-const MODELS_PATH = '/settings/models'
 
 const sampleBulkPayload = `[
   {
@@ -97,20 +100,10 @@ function App() {
   const [topicDrawerOpen, setTopicDrawerOpen] = useState(false)
   const [focusModeOpen, setFocusModeOpen] = useState(false)
   const spinnerTimerRef = useRef(null)
-  const [path, setPath] = useState(() => window.location.pathname)
-
-  useEffect(() => {
-    const handlePopState = () => setPath(window.location.pathname)
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
-
-  const navigate = (nextPath) => {
-    if (nextPath !== window.location.pathname) {
-      window.history.pushState(null, '', nextPath)
-    }
-    setPath(nextPath)
-  }
+  const { pathname, query } = useLocation()
+  const onAdminPage = isAdminPath(pathname)
+  const practiceTopicParam = pathname === '/' ? query.get('topic') : null
+  const wasOnAdminPageRef = useRef(onAdminPage)
 
   const currentQuestion = questions[currentIndex]
   const currentAnswer = currentQuestion ? answerMap[getQuestionId(currentQuestion)] : null
@@ -479,6 +472,35 @@ function App() {
     }
   }
 
+  // Back from the admin screens: approvals change topics and subtopic counts. "?topic=" opens that topic.
+  useEffect(() => {
+    const cameFromAdmin = wasOnAdminPageRef.current
+    wasOnAdminPageRef.current = onAdminPage
+    if (appState !== 'ready' || onAdminPage || (!cameFromAdmin && !practiceTopicParam)) {
+      return undefined
+    }
+
+    let cancelled = false
+    const sync = async () => {
+      await Promise.resolve()
+      if (cancelled) {
+        return
+      }
+      if (practiceTopicParam) {
+        navigate('/', { replace: true })
+        await loadTopics()
+        await handleSelectTopic(practiceTopicParam)
+      } else {
+        await refreshAfterWrite()
+      }
+    }
+    void sync()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState, onAdminPage, practiceTopicParam])
+
   const handleBulkIngest = async (event) => {
     event.preventDefault()
 
@@ -704,7 +726,7 @@ function App() {
         onRefresh={handleRefresh}
         onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
         onToggleAdmin={() => setAdminOpen((previous) => !previous)}
-        onOpenModels={() => navigate(MODELS_PATH)}
+        onOpenStudio={() => navigate('/admin/notes')}
         isFocusMode={focusModeOpen}
         user={user}
         onLogin={() => {
@@ -714,23 +736,20 @@ function App() {
         onLogout={handleLogout}
       />
 
-      {path === MODELS_PATH ? (
-        user?.role === 'admin' ? (
-          <ModelSettings onBack={() => navigate('/')} />
+      {onAdminPage ? (
+        user || !tokenStore.get() ? (
+          <Suspense
+            fallback={
+              <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            }
+          >
+            <AdminShell user={user} pathname={pathname} query={query} />
+          </Suspense>
         ) : (
-          <div className="flex flex-1 items-center justify-center p-6 text-center">
-            <div className="space-y-4">
-              <h2 className="text-2xl font-semibold text-white">
-                {!user && tokenStore.get() ? 'Checking your session…' : 'Admin access required'}
-              </h2>
-              <button
-                type="button"
-                className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 transition hover:border-cyan-400 hover:text-cyan-200"
-                onClick={() => navigate('/')}
-              >
-                Back to practice
-              </button>
-            </div>
+          <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Checking your session…
           </div>
         )
       ) : (
