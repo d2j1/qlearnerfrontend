@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Sparkles } from 'lucide-react'
+import { Pencil, Plus, Sparkles } from 'lucide-react'
 import { getTopics, listNotes } from '../../api/client'
 import Link from '../../lib/Link'
 import { navigate } from '../../lib/router'
@@ -83,7 +83,7 @@ function NotesPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <Link to={`/admin/notes/${encodeURIComponent(note.id)}`} className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-white hover:text-cyan-200">{note.title}</span>
+                  <span className="w-full font-semibold text-white hover:text-cyan-200 sm:w-auto">{note.title}</span>
                   <Badge tone="cyan">
                     {note.topic} / {note.subtopic}
                   </Badge>
@@ -95,9 +95,22 @@ function NotesPage() {
                   <span className="text-xs text-slate-500">Edited {formatRelative(note.updated_at)}</span>
                 </div>
               </Link>
-              <button type="button" className={`${smallButtonClass} inline-flex items-center gap-1`} onClick={() => navigate(generateFromNoteHref(note))}>
-                <Sparkles className="h-3.5 w-3.5" /> Generate from this note
-              </button>
+              <div className="flex w-full gap-2 sm:w-auto sm:flex-col">
+                <button
+                  type="button"
+                  className={`${smallButtonClass} inline-flex flex-1 items-center justify-center gap-1 py-2 sm:flex-none`}
+                  onClick={() => navigate(`/admin/notes/${encodeURIComponent(note.id)}/edit`)}
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+                <button
+                  type="button"
+                  className={`${smallButtonClass} inline-flex flex-1 items-center justify-center gap-1 py-2 sm:flex-none`}
+                  onClick={() => navigate(generateFromNoteHref(note))}
+                >
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
+                </button>
+              </div>
             </div>
           </li>
         ))}
