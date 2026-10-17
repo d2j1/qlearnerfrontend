@@ -238,4 +238,31 @@ export function renameSubtopic(topic, subtopic, nextName, options = {}) {
   })
 }
 
+// LLM configs (admin)
+export function listModels(options = {}) {
+  return request('/api/llm-configs', options)
+}
+
+export function createModel(body, options = {}) {
+  return request('/api/llm-configs', { method: 'POST', body, ...options })
+}
+
+export function updateModel(id, patch, options = {}) {
+  return request(`/api/llm-configs/${enc(id)}`, { method: 'PATCH', body: patch, ...options })
+}
+
+export function deleteModel(id, options = {}) {
+  return request(`/api/llm-configs/${enc(id)}`, { method: 'DELETE', ...options })
+}
+
+// A model call takes ~7-15 s, so allow well beyond the default timeout.
+export function testModel(id, prompt, options = {}) {
+  return request(`/api/llm-configs/${enc(id)}/test`, {
+    method: 'POST',
+    body: prompt ? { prompt } : {},
+    timeoutMs: 60000,
+    ...options,
+  })
+}
+
 export { API_BASE_URL }
