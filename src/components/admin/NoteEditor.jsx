@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Loader2, Sparkles } from 'lucide-react'
+import { ArrowLeft, BookOpen, Loader2, Sparkles } from 'lucide-react'
 import { createNote, deleteNote, getNote, getSubtopics, getTopics, listNotes, updateNote } from '../../api/client'
 import Link from '../../lib/Link'
 import { navigate, useNavigationBlocker } from '../../lib/router'
@@ -28,7 +28,8 @@ function NoteEditorForm({ note }) {
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
-  const [view, setView] = useState('split') // 'write' | 'split' | 'preview'
+  // Split view needs a wide screen; phones start on Write.
+  const [view, setView] = useState(() => (window.matchMedia?.('(min-width: 1024px)').matches ? 'split' : 'write')) // 'write' | 'split' | 'preview'
   // Existing topics/subtopics from questions and other notes, so new notes can join them.
   const taxonomy = useLoader(async () => {
     const [topics, notes] = await Promise.all([getTopics(), listNotes({ limit: 200 })])
@@ -131,8 +132,11 @@ function NoteEditorForm({ note }) {
 
   return (
     <form onSubmit={handleSave} noValidate>
-      <Link to="/admin/notes" className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-cyan-200">
-        <ArrowLeft className="h-4 w-4" /> All notes
+      <Link
+        to={isNew ? '/admin/notes' : `/admin/notes/${encodeURIComponent(note.id)}`}
+        className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-cyan-200"
+      >
+        <ArrowLeft className="h-4 w-4" /> {isNew ? 'All notes' : 'Back to note'}
       </Link>
       <PageHeader
         eyebrow="Notes"
@@ -144,9 +148,16 @@ function NoteEditorForm({ note }) {
                 <button
                   type="button"
                   className={`${smallButtonClass} inline-flex items-center gap-1`}
+                  onClick={() => navigate(`/admin/notes/${encodeURIComponent(note.id)}`)}
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Read
+                </button>
+                <button
+                  type="button"
+                  className={`${smallButtonClass} inline-flex items-center gap-1`}
                   onClick={() => navigate(generateFromNoteHref(note))}
                 >
-                  <Sparkles className="h-3.5 w-3.5" /> Generate from this note
+                  <Sparkles className="h-3.5 w-3.5" /> Generate
                 </button>
                 <button type="button" className={`${smallButtonClass} hover:border-rose-400 hover:text-rose-200`} onClick={handleDelete}>
                   Delete
@@ -206,10 +217,11 @@ function NoteEditorForm({ note }) {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-xl border border-slate-700 p-0.5 text-xs">
           {['write', 'split', 'preview'].map((mode) => (
+            // Split only makes sense side by side, so it is hidden on small screens.
             <button
               key={mode}
               type="button"
-              className={`rounded-lg px-3 py-1 capitalize ${view === mode ? 'bg-cyan-500/20 text-cyan-100' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`rounded-lg px-3 py-1 capitalize ${mode === 'split' ? 'hidden lg:inline-block' : ''} ${view === mode ? 'bg-cyan-500/20 text-cyan-100' : 'text-slate-400 hover:text-slate-200'}`}
               onClick={() => setView(mode)}
             >
               {mode}
@@ -225,14 +237,14 @@ function NoteEditorForm({ note }) {
       <div className={`grid gap-3 ${view === 'split' ? 'lg:grid-cols-2' : ''}`}>
         {view !== 'preview' ? (
           <textarea
-            className={`${inputClass} min-h-[28rem] font-mono`}
+            className={`${inputClass} min-h-[60vh] font-mono lg:min-h-[28rem]`}
             placeholder="Write your notes in markdown…"
             value={form.content}
             onChange={(event) => setField('content', event.target.value)}
           />
         ) : null}
         {view !== 'write' ? (
-          <div className="min-h-[28rem] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/60 p-4 text-sm text-slate-200">
+          <div className="min-h-[60vh] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/60 p-4 text-sm text-slate-200 lg:min-h-[28rem]">
             {form.content.trim() ? <Markdown>{form.content}</Markdown> : <p className="text-slate-500">Nothing to preview.</p>}
           </div>
         ) : null}
