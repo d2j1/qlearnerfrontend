@@ -41,15 +41,60 @@ function TopicSidebar({
               const isActive = currentTopic === topic
 
               return (
-                <button
-                  key={topic}
-                  type="button"
-                  className={topicItemClass(isActive)}
-                  onClick={() => onSelectTopic(topic)}
-                >
-                  <span className="truncate">{topic}</span>
-                  <ChevronRight className="h-4 w-4 shrink-0" />
-                </button>
+                <div key={topic}>
+                  <button
+                    type="button"
+                    aria-expanded={isActive}
+                    className={topicItemClass(isActive)}
+                    // Clicking the open topic again collapses it.
+                    onClick={() => onSelectTopic(isActive ? allTopicsLabel : topic)}
+                  >
+                    <span className="truncate">{topic}</span>
+                    <ChevronRight className={`h-4 w-4 shrink-0 transition-transform ${isActive ? 'rotate-90' : ''}`} />
+                  </button>
+
+                  {isActive ? (
+                    <div className="ml-3 mt-2 border-l border-slate-700 pl-3">
+                      {currentSubtopic ? (
+                        <div className="mb-2 flex justify-end">
+                          <button
+                            type="button"
+                            className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:border-cyan-400 hover:text-cyan-200"
+                            onClick={() => onSelectSubtopic('')}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        {subtopics.length ? (
+                          subtopics.map(({ subtopic, question_count: questionCount }) => {
+                            const isSubtopicActive = currentSubtopic === subtopic
+                            return (
+                              <button
+                                key={subtopic}
+                                type="button"
+                                className={`rounded-full border px-3 py-2 text-xs transition ${
+                                  isSubtopicActive
+                                    ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+                                    : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-emerald-300 hover:text-emerald-100'
+                                }`}
+                                onClick={() => onSelectSubtopic(subtopic)}
+                              >
+                                {subtopic}
+                                {typeof questionCount === 'number' ? (
+                                  <span className="ml-1.5 rounded-full bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{questionCount}</span>
+                                ) : null}
+                              </button>
+                            )
+                          })
+                        ) : (
+                          <p className="text-sm text-slate-500">Loading subtopics...</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               )
             })
           ) : (
@@ -58,53 +103,6 @@ function TopicSidebar({
             </div>
           )}
         </div>
-
-        {currentTopic !== allTopicsLabel ? (
-          <section className="rounded-[1.5rem] border border-slate-700 bg-slate-900/60 p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Subtopics</p>
-                <h3 className="mt-1 text-base font-semibold text-white">{currentTopic}</h3>
-              </div>
-              {currentSubtopic ? (
-                <button
-                  type="button"
-                  className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:border-cyan-400 hover:text-cyan-200"
-                  onClick={() => onSelectSubtopic('')}
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {subtopics.length ? (
-                subtopics.map(({ subtopic, question_count: questionCount }) => {
-                  const isActive = currentSubtopic === subtopic
-                  return (
-                    <button
-                      key={subtopic}
-                      type="button"
-                      className={`rounded-full border px-3 py-2 text-xs transition ${
-                        isActive
-                          ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
-                          : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-emerald-300 hover:text-emerald-100'
-                      }`}
-                      onClick={() => onSelectSubtopic(subtopic)}
-                    >
-                      {subtopic}
-                      {typeof questionCount === 'number' ? (
-                        <span className="ml-1.5 rounded-full bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{questionCount}</span>
-                      ) : null}
-                    </button>
-                  )
-                })
-              ) : (
-                <p className="text-sm text-slate-500">Loading subtopics...</p>
-              )}
-            </div>
-          </section>
-        ) : null}
       </div>
     </aside>
   )

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { AlertTriangle, Loader2, Sparkles } from 'lucide-react'
-import { createJob, getNote, getTopics, listJobs, listModels, listNotes, listPrompts } from '../../api/client'
+import { createJob, getNote, getSubtopics, getTopics, listJobs, listModels, listNotes, listPrompts } from '../../api/client'
 import Link from '../../lib/Link'
+import Combobox from './Combobox'
 import { navigate } from '../../lib/router'
 import { formatSize, useLoader } from './helpers'
 import { Badge, Banner, LoadState, PageHeader, cardClass, inputClass, primaryButtonClass } from './ui'
@@ -16,7 +17,7 @@ const MAX_NOTES = 50
 const MAX_FOCUS = 2000
 const MAX_EXTRA = 4000
 
-function GenerateForm({ initialNote, models, prompts, topicOptions }) {
+function GenerateForm({ initialNote, models, prompts, topicOptions, noteSubtopics }) {
   const defaultModel = models.find((model) => model.is_default) ?? null
   const defaultPrompt = prompts.find((prompt) => prompt.is_default) ?? null
 
@@ -46,6 +47,15 @@ function GenerateForm({ initialNote, models, prompts, topicOptions }) {
     () => listNotes({ topic: form.topic.trim() || undefined, subtopic: form.subtopic.trim() || undefined, limit: 200 }),
     [form.topic, form.subtopic],
   )
+  // Subtopics that already have questions under this topic, plus ones used by notes.
+  const topicKey = form.topic.trim()
+  const knownTopic = topicOptions.includes(topicKey)
+  const questionSubtopics = useLoader(
+    () => (knownTopic ? getSubtopics(topicKey).then((page) => page.subtopics.map((item) => item.subtopic)).catch(() => []) : Promise.resolve([])),
+    [topicKey, knownTopic],
+  )
+  const subtopicOptions = [...new Set([...(questionSubtopics.data ?? []), ...(noteSubtopics[topicKey] ?? [])])].sort((a, b) => a.localeCompare(b))
+
   const activeJobs = useLoader(async () => {
     const [running, queued] = await Promise.all([listJobs({ status: 'running', limit: 1 }), listJobs({ status: 'queued', limit: 1 })])
     return running.total + queued.total
@@ -160,29 +170,34 @@ function GenerateForm({ initialNote, models, prompts, topicOptions }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm text-slate-300">
           Topic
-          <input className={`${inputClass} mt-1`} list="generate-topic-options" value={form.topic} onChange={(event) => setField('topic', event.target.value)} />
+          <Combobox
+            value={form.topic}
+            options={topicOptions}
+            placeholder="Pick a topic or type a new one"
+            newLabel="New topic"
+            onChange={(topic) =>
+              setForm((previous) => ({
+                ...previous,
+                topic,
+                // A different topic makes the old subtopic meaningless.
+                subtopic: topic.trim() === previous.topic.trim() ? previous.subtopic : '',
+              }))
+            }
+          />
           {fieldError('topic')}
         </label>
         <label className="block text-sm text-slate-300">
           Subtopic
-          <input
-            className={`${inputClass} mt-1`}
-            list="generate-subtopic-options"
+          <Combobox
             value={form.subtopic}
-            onChange={(event) => setField('subtopic', event.target.value)}
+            options={subtopicOptions}
+            loading={questionSubtopics.loading}
+            placeholder={topicKey ? 'Pick a subtopic or type a new one' : 'Pick a topic first'}
+            newLabel="New subtopic"
+            onChange={(subtopic) => setField('subtopic', subtopic)}
           />
           {fieldError('subtopic')}
         </label>
-        <datalist id="generate-topic-options">
-          {topicOptions.map((value) => (
-            <option key={value} value={value} />
-          ))}
-        </datalist>
-        <datalist id="generate-subtopic-options">
-          {[...new Set(noteItems.map((note) => note.subtopic))].map((value) => (
-            <option key={value} value={value} />
-          ))}
-        </datalist>
       </div>
 
       <div className="text-sm text-slate-300">
@@ -339,13 +354,19 @@ function GenerateForm({ initialNote, models, prompts, topicOptions }) {
 
 function GeneratePage({ noteId }) {
   const setup = useLoader(async () => {
-    const [models, prompts, topics, note] = await Promise.all([
+    const [models, prompts, topics, notes, note] = await Promise.all([
       listModels(),
       listPrompts(),
       getTopics(),
+      listNotes({ limit: 200 }),
       noteId ? getNote(noteId).catch(() => null) : null,
     ])
-    return { models: models.filter((model) => model.enabled), prompts, topics: topics.topics ?? [], note }
+    const noteSubtopics = {}
+    notes.items.forEach((item) => {
+      noteSubtopics[item.topic] = [...new Set([...(noteSubtopics[item.topic] ?? []), item.subtopic])]
+    })
+    const allTopics = [...new Set([...(topics.topics ?? []), ...Object.keys(noteSubtopics)])].sort((a, b) => a.localeCompare(b))
+    return { models: models.filter((model) => model.enabled), prompts, topics: allTopics, noteSubtopics, note }
   }, [noteId])
 
   return (
@@ -359,6 +380,7 @@ function GeneratePage({ noteId }) {
             models={setup.data.models}
             prompts={setup.data.prompts}
             topicOptions={setup.data.topics}
+            noteSubtopics={setup.data.noteSubtopics}
           />
         </div>
       ) : (
