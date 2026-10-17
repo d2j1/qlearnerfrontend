@@ -222,6 +222,11 @@ export function deleteQuestion(questionId, options = {}) {
   return request(`/api/questions/${enc(questionId)}`, { method: 'DELETE', ...options })
 }
 
+// Admin: every topic/subtopic used by questions (incl. drafts) or notes, with counts.
+export function getTaxonomy(options = {}) {
+  return request('/api/taxonomy', options)
+}
+
 export function renameTopic(topic, nextName, options = {}) {
   return request(`/api/topics/${enc(topic)}/rename`, {
     method: 'PUT',

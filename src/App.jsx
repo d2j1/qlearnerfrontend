@@ -1,16 +1,12 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookOpen, ChevronRight, Loader2 } from 'lucide-react'
 import {
-  bulkIngestQuestions,
   getMe,
-  getQuestionById,
   getQuestions,
   getSubtopicQuestions,
   getSubtopics,
   getTopics,
   logout,
-  renameSubtopic,
-  renameTopic,
   setOnUnauthorized,
   tokenStore,
 } from './api/client'
@@ -18,6 +14,7 @@ import AuthModal from './components/AuthModal'
 import { isAdminPath } from './components/admin/helpers'
 import Navbar from './components/Navbar'
 import QuestionCard from './components/QuestionCard'
+import RenameTaxonomyPanel from './components/RenameTaxonomyPanel'
 import TopicSidebar from './components/TopicSidebar'
 import { navigate, useLocation } from './lib/router'
 
@@ -27,23 +24,6 @@ const PracticeQuestionActions = lazy(() => import('./components/admin/PracticeQu
 
 const PAGE_SIZE = 8
 const ALL_TOPICS = 'All Topics'
-
-const sampleBulkPayload = `[
-  {
-    "topic": "JavaScript",
-    "subtopic": "Arrays",
-    "question_text": "Which method creates a new array by calling a function on every element?",
-    "options": [
-      { "index": 0, "text": "map()" },
-      { "index": 1, "text": "filter()" },
-      { "index": 2, "text": "reduce()" },
-      { "index": 3, "text": "forEach()" }
-    ],
-    "correct_option_indices": [0],
-    "explanation": "map() transforms each element and returns a new array with the same length.",
-    "difficulty": "EASY"
-  }
-]`
 
 function isAnswerCorrect(question, selected) {
   const correct = new Set(question.correct_option_indices ?? [])
@@ -73,20 +53,7 @@ function App() {
   const [error, setError] = useState('')
   const [answerMap, setAnswerMap] = useState({})
   const [adminOpen, setAdminOpen] = useState(false)
-  const [bulkJson, setBulkJson] = useState(sampleBulkPayload)
-  const [adminMessage, setAdminMessage] = useState('')
   const [questionAction, setQuestionAction] = useState(null) // { type: 'edit' | 'delete', question }
-  const [questionLookupId, setQuestionLookupId] = useState('')
-  const [questionLookupResult, setQuestionLookupResult] = useState(null)
-  const [renameTopicForm, setRenameTopicForm] = useState({
-    topic: '',
-    nextName: '',
-  })
-  const [renameSubtopicForm, setRenameSubtopicForm] = useState({
-    topic: '',
-    subtopic: '',
-    nextName: '',
-  })
   const [user, setUser] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
   const [authNotice, setAuthNotice] = useState('')
@@ -495,19 +462,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState, onAdminPage, practiceTopicParam])
 
-  const handleBulkIngest = async (event) => {
-    event.preventDefault()
-
-    try {
-      const parsed = JSON.parse(bulkJson)
-      const result = await bulkIngestQuestions(Array.isArray(parsed) ? parsed : [parsed])
-      setAdminMessage(`Inserted ${result?.inserted_count ?? 0} question(s).`)
-      await refreshAfterWrite()
-    } catch (ingestError) {
-      setAdminMessage(ingestError.message || 'Bulk ingest failed.')
-    }
-  }
-
   const handleQuestionSaved = (previous, updated) => {
     setQuestions((list) => list.map((question) => (question.id === updated.id ? updated : question)))
     const answerChanged =
@@ -529,67 +483,27 @@ function App() {
     await refreshAfterWrite()
   }
 
-  const handleGetQuestionById = async (event) => {
-    event.preventDefault()
-
-    if (!questionLookupId.trim()) {
-      setAdminMessage('Question id is required for GET by id.')
-      return
-    }
-
-    try {
-      const payload = await getQuestionById(questionLookupId.trim())
-      setQuestionLookupResult(payload)
-      setAdminMessage('Question fetched successfully.')
-    } catch (fetchError) {
-      setQuestionLookupResult(null)
-      setAdminMessage(fetchError.message || 'Fetching question by id failed.')
-    }
-  }
-
-  const handleRenameTopic = async (event) => {
-    event.preventDefault()
-
-    if (!renameTopicForm.topic.trim() || !renameTopicForm.nextName.trim()) {
-      setAdminMessage('Both current topic and next topic name are required.')
-      return
-    }
-
-    try {
-      const result = await renameTopic(renameTopicForm.topic.trim(), renameTopicForm.nextName.trim())
-      setAdminMessage(
-        result?.modified_count ? `Renamed topic on ${result.modified_count} question(s).` : 'No questions matched that topic.',
-      )
+  // Keep the practice view on the renamed topic/subtopic and refresh counts.
+  const handleRenamed = async ({ kind, topic, from, to }) => {
+    if (kind === 'topic') {
       await loadTopics()
-    } catch (renameError) {
-      setAdminMessage(renameError.message || 'Topic rename failed.')
-    }
-  }
-
-  const handleRenameSubtopic = async (event) => {
-    event.preventDefault()
-
-    if (!renameSubtopicForm.topic.trim() || !renameSubtopicForm.subtopic.trim() || !renameSubtopicForm.nextName.trim()) {
-      setAdminMessage('Topic, subtopic, and next subtopic name are required.')
+      if (selectedTopic !== from) {
+        return
+      }
+      setSelectedTopic(to)
+      setQuestions((list) => list.map((question) => ({ ...question, topic: to })))
+      await loadSubtopics(to)
       return
     }
 
-    try {
-      const result = await renameSubtopic(
-        renameSubtopicForm.topic.trim(),
-        renameSubtopicForm.subtopic.trim(),
-        renameSubtopicForm.nextName.trim(),
-      )
-      setAdminMessage(
-        result?.modified_count
-          ? `Renamed subtopic on ${result.modified_count} question(s).`
-          : 'No questions matched that topic/subtopic.',
-      )
-      if (selectedTopic !== ALL_TOPICS) {
-        await loadSubtopics(selectedTopic)
-      }
-    } catch (renameError) {
-      setAdminMessage(renameError.message || 'Subtopic rename failed.')
+    if (selectedTopic !== topic) {
+      return
+    }
+    await loadSubtopics(topic)
+    if (selectedSubtopic === from) {
+      setSelectedSubtopic(to)
+      // A merge can bring in more questions, so reload the list.
+      await loadQuestions({ topic, subtopic: to, offset: 0, append: false })
     }
   }
 
@@ -919,7 +833,7 @@ function App() {
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Management</p>
                 <h2 className="mt-1 text-2xl font-semibold text-white">Quick Admin Drawer</h2>
-                <p className="mt-2 text-sm text-slate-400">Bulk ingest question sets, look up a question by id, or rename topics.</p>
+                <p className="mt-2 text-sm text-slate-400">Manage questions and rename topics or subtopics.</p>
               </div>
               <button
                 type="button"
@@ -930,33 +844,9 @@ function App() {
               </button>
             </div>
 
-            {adminMessage ? (
-              <div className="mb-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                {adminMessage}
-              </div>
-            ) : null}
-
-            <form className="space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleBulkIngest}>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Bulk ingest</h3>
-                <p className="mt-1 text-sm text-slate-400">Paste a JSON array matching the question schema.</p>
-              </div>
-              <textarea
-                className="min-h-48 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                value={bulkJson}
-                onChange={(event) => setBulkJson(event.target.value)}
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-              >
-                Send bulk payload
-              </button>
-            </form>
-
             <button
               type="button"
-              className="mt-4 flex w-full items-center justify-between rounded-3xl border border-slate-700 bg-slate-900/60 p-4 text-left transition hover:border-cyan-400"
+              className="flex w-full items-center justify-between rounded-3xl border border-slate-700 bg-slate-900/60 p-4 text-left transition hover:border-cyan-400"
               onClick={() => {
                 setAdminOpen(false)
                 navigate('/admin/questions')
@@ -969,110 +859,9 @@ function App() {
               <ChevronRight className="h-5 w-5 text-slate-400" />
             </button>
 
-            <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleGetQuestionById}>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Get question by id</h3>
-                <p className="mt-1 text-sm text-slate-400">Calls GET /api/questions/{'{question_id}'}.</p>
-              </div>
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Question id"
-                value={questionLookupId}
-                onChange={(event) => setQuestionLookupId(event.target.value)}
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-400/20"
-              >
-                Fetch question
-              </button>
-              {questionLookupResult ? (
-                <pre className="overflow-x-auto rounded-2xl border border-slate-700 bg-slate-950 p-3 text-xs text-slate-300">
-                  {JSON.stringify(questionLookupResult, null, 2)}
-                </pre>
-              ) : null}
-            </form>
-
-            <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleRenameTopic}>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Rename topic</h3>
-                <p className="mt-1 text-sm text-slate-400">Calls PUT /api/topics/{'{topic}'}/rename.</p>
-              </div>
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Current topic"
-                value={renameTopicForm.topic}
-                onChange={(event) =>
-                  setRenameTopicForm((previous) => ({
-                    ...previous,
-                    topic: event.target.value,
-                  }))
-                }
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="New topic name"
-                value={renameTopicForm.nextName}
-                onChange={(event) =>
-                  setRenameTopicForm((previous) => ({
-                    ...previous,
-                    nextName: event.target.value,
-                  }))
-                }
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-amber-400/40 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-100 transition hover:border-amber-300 hover:bg-amber-400/20"
-              >
-                Submit topic rename
-              </button>
-            </form>
-
-            <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleRenameSubtopic}>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Rename subtopic</h3>
-                <p className="mt-1 text-sm text-slate-400">Calls PUT /api/topics/{'{topic}'}/subtopics/{'{subtopic}'}/rename.</p>
-              </div>
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Topic"
-                value={renameSubtopicForm.topic}
-                onChange={(event) =>
-                  setRenameSubtopicForm((previous) => ({
-                    ...previous,
-                    topic: event.target.value,
-                  }))
-                }
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Current subtopic"
-                value={renameSubtopicForm.subtopic}
-                onChange={(event) =>
-                  setRenameSubtopicForm((previous) => ({
-                    ...previous,
-                    subtopic: event.target.value,
-                  }))
-                }
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="New subtopic name"
-                value={renameSubtopicForm.nextName}
-                onChange={(event) =>
-                  setRenameSubtopicForm((previous) => ({
-                    ...previous,
-                    nextName: event.target.value,
-                  }))
-                }
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-violet-400/40 bg-violet-500/15 px-4 py-2.5 text-sm font-semibold text-violet-100 transition hover:border-violet-300 hover:bg-violet-400/20"
-              >
-                Submit subtopic rename
-              </button>
-            </form>
+            <div className="mt-4">
+              <RenameTaxonomyPanel onRenamed={handleRenamed} />
+            </div>
           </aside>
         </div>
       ) : null}
