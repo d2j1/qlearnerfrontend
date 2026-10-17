@@ -1,20 +1,17 @@
 import { CheckCircle2, XCircle } from 'lucide-react'
 
 function OptionButton({
-  correctOptionIndex,
   correctOptionIndices,
   disabled,
   isSelected,
   isAnswered,
+  label,
   option,
   onClick,
   optionIndex,
-  selectedCorrectly,
 }) {
-  const isCorrectOption =
-    isAnswered &&
-    (correctOptionIndices?.includes(optionIndex) || optionIndex === correctOptionIndex)
-  const isIncorrectSelection = isAnswered && isSelected && !selectedCorrectly
+  const isCorrectOption = isAnswered && correctOptionIndices?.includes(optionIndex)
+  const isIncorrectSelection = isAnswered && isSelected && !isCorrectOption
 
   const baseClass =
     'group flex w-full items-start gap-3 rounded-2xl border px-4 py-4 text-left transition duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 disabled:cursor-not-allowed'
@@ -25,7 +22,9 @@ function OptionButton({
       : isIncorrectSelection
         ? 'border-rose-400/50 bg-rose-500/15 text-rose-50'
         : 'border-slate-700 bg-slate-900/50 text-slate-300 opacity-80'
-    : 'border-slate-700 bg-slate-900/40 text-slate-100 hover:border-cyan-400/40 hover:bg-slate-900'
+    : isSelected
+      ? 'border-cyan-400/60 bg-cyan-500/15 text-cyan-50'
+      : 'border-slate-700 bg-slate-900/40 text-slate-100 hover:border-cyan-400/40 hover:bg-slate-900'
 
   return (
     <button
@@ -45,13 +44,13 @@ function OptionButton({
             : 'border-slate-600 bg-slate-950/50 text-slate-300 group-hover:border-cyan-400 group-hover:text-cyan-200'
         }`}
       >
-        {String.fromCharCode(65 + optionIndex)}
+        {label}
       </span>
 
       <span className="flex-1 text-sm leading-6 sm:text-base">{option.text}</span>
 
       {isAnswered ? (
-        selectedCorrectly && isSelected ? (
+        isCorrectOption && isSelected ? (
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
         ) : isIncorrectSelection ? (
           <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-300" />

@@ -2,14 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookOpen, ChevronRight, Loader2 } from 'lucide-react'
 import {
   bulkIngestQuestions,
+  deleteQuestion,
+  getMe,
   getQuestionById,
   getQuestions,
-  getTopicQuestions,
+  getSubtopicQuestions,
+  getSubtopics,
   getTopics,
+  logout,
   patchQuestion,
   renameSubtopic,
   renameTopic,
+  setOnUnauthorized,
+  tokenStore,
 } from './api/client'
+import AuthModal from './components/AuthModal'
 import Navbar from './components/Navbar'
 import QuestionCard from './components/QuestionCard'
 import TopicSidebar from './components/TopicSidebar'
@@ -19,7 +26,6 @@ const ALL_TOPICS = 'All Topics'
 
 const sampleBulkPayload = `[
   {
-    "id": "demo-1",
     "topic": "JavaScript",
     "subtopic": "Arrays",
     "question_text": "Which method creates a new array by calling a function on every element?",
@@ -35,62 +41,9 @@ const sampleBulkPayload = `[
   }
 ]`
 
-function normalizeQuestionArray(payload) {
-  if (Array.isArray(payload)) {
-    return payload.flatMap((item) => {
-      if (Array.isArray(item?.questions)) {
-        return item.questions
-      }
-
-      return item ? [item] : []
-    })
-  }
-
-  if (Array.isArray(payload?.questions)) {
-    return payload.questions
-  }
-
-  if (Array.isArray(payload?.data)) {
-    return payload.data
-  }
-
-  if (Array.isArray(payload?.items)) {
-    return payload.items
-  }
-
-  return []
-}
-
-function normalizeSubtopics(payload) {
-  const groups = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.subtopics)
-      ? payload.subtopics
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.topics)
-          ? payload.topics
-          : Array.isArray(payload?.groups)
-            ? payload.groups
-            : []
-
-  return groups
-    .flatMap((group) => {
-      if (typeof group === 'string') {
-        return [group]
-      }
-
-      if (typeof group?.subtopic === 'string') {
-        return [group.subtopic]
-      }
-
-      if (typeof group?.name === 'string') {
-        return [group.name]
-      }
-
-      return []
-    })
-    .filter(Boolean)
+function isAnswerCorrect(question, selected) {
+  const correct = new Set(question.correct_option_indices ?? [])
+  return selected.length === correct.size && selected.every((index) => correct.has(index))
 }
 
 function getQuestionId(question) {
@@ -134,6 +87,11 @@ function App() {
     subtopic: '',
     nextName: '',
   })
+  const [deleteId, setDeleteId] = useState('')
+  const [user, setUser] = useState(null)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authNotice, setAuthNotice] = useState('')
+  const userRef = useRef(null)
   const [topicDrawerOpen, setTopicDrawerOpen] = useState(false)
   const [focusModeOpen, setFocusModeOpen] = useState(false)
   const spinnerTimerRef = useRef(null)
@@ -143,7 +101,7 @@ function App() {
 
   const selectedTopicLabel = useMemo(() => {
     if (selectedTopic === ALL_TOPICS) {
-      return ALL_TOPICS
+      return 'Pick a topic'
     }
 
     if (!selectedSubtopic) {
@@ -152,6 +110,46 @@ function App() {
 
     return `${selectedTopic} / ${selectedSubtopic}`
   }, [selectedSubtopic, selectedTopic])
+
+  useEffect(() => {
+    userRef.current = user
+  }, [user])
+
+  // Any 401 on an authenticated call: the client has already cleared the token.
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      const wasLoggedIn = Boolean(userRef.current)
+      setUser(null)
+      setAdminOpen(false)
+      if (wasLoggedIn) {
+        setAuthNotice('Your session expired. Please log in again.')
+        setAuthOpen(true)
+      }
+    })
+    return () => setOnUnauthorized(() => {})
+  }, [])
+
+  // Restore the session once the backend is awake.
+  useEffect(() => {
+    if (appState !== 'ready' || !tokenStore.get()) {
+      return
+    }
+    getMe()
+      .then(setUser)
+      .catch(() => setUser(null))
+  }, [appState])
+
+  const handleAuthenticated = (nextUser) => {
+    setUser(nextUser)
+    setAuthOpen(false)
+    setAuthNotice('')
+  }
+
+  const handleLogout = () => {
+    logout()
+    setUser(null)
+    setAdminOpen(false)
+  }
 
   useEffect(() => {
     if (!focusModeOpen) {
@@ -195,7 +193,7 @@ function App() {
 
     try {
       const payload = await runWithWarmup(() => getTopics())
-      setTopics(normalizeSubtopics(payload))
+      setTopics(Array.isArray(payload?.topics) ? payload.topics : [])
     } catch (loadError) {
       setError(loadError.message || 'Failed to load topics.')
     } finally {
@@ -210,12 +208,22 @@ function App() {
     }
 
     try {
-      const payload = await runWithWarmup(() => getTopicQuestions(topic, { limit: 250, offset: 0 }))
-      setSubtopics(normalizeSubtopics(payload))
-    } catch {
+      const payload = await runWithWarmup(() => getSubtopics(topic))
+      setSubtopics(Array.isArray(payload?.subtopics) ? payload.subtopics : [])
+      return true
+    } catch (loadError) {
       setSubtopics([])
+      if (loadError.status === 404) {
+        // Topic was renamed or emptied: go back to the topic list.
+        setError(`Topic "${topic}" no longer exists.`)
+        setSelectedTopic(ALL_TOPICS)
+        setSelectedSubtopic('')
+        await loadTopics()
+        return false
+      }
+      return true
     }
-  }, [runWithWarmup])
+  }, [loadTopics, runWithWarmup])
 
   const loadQuestions = useCallback(async ({ topic, subtopic, offset = 0, append = false } = {}) => {
     setQuestionsLoading(true)
@@ -223,21 +231,23 @@ function App() {
 
     try {
       const payload = await runWithWarmup(() =>
-        getQuestions({
-          topic: topic === ALL_TOPICS ? undefined : topic,
-          subtopic: subtopic || undefined,
-          limit: PAGE_SIZE,
-          offset,
-        }),
+        topic !== ALL_TOPICS && subtopic
+          ? getSubtopicQuestions(topic, subtopic, { limit: PAGE_SIZE, offset })
+          : getQuestions({
+              topic: topic === ALL_TOPICS ? undefined : topic,
+              limit: PAGE_SIZE,
+              offset,
+            }),
       )
 
-      const nextQuestions = normalizeQuestionArray(payload)
+      const nextQuestions = Array.isArray(payload?.items) ? payload.items : []
+      const total = typeof payload?.total === 'number' ? payload.total : 0
 
       setQuestions((previousQuestions) => {
         const mergedQuestions = append ? [...previousQuestions, ...nextQuestions] : nextQuestions
         return mergedQuestions
       })
-      setHasMore(nextQuestions.length === PAGE_SIZE)
+      setHasMore(offset + nextQuestions.length < total)
       setCurrentIndex(append ? offset : 0)
     } catch (loadError) {
       setError(loadError.message || 'Failed to load questions.')
@@ -329,12 +339,6 @@ function App() {
       }
 
       await loadTopics()
-
-      if (cancelled) {
-        return
-      }
-
-      await loadQuestions({ topic: ALL_TOPICS, subtopic: '', offset: 0, append: false })
     }
 
     void bootstrap()
@@ -351,16 +355,15 @@ function App() {
     setCurrentIndex(0)
     setHasMore(true)
     setAnswerMap({})
-    setTopicDrawerOpen(false)
+    setError('')
 
+    // Picking a topic only lists its subtopics; questions load once a subtopic is chosen.
     if (topic === ALL_TOPICS) {
       setSubtopics([])
-      await loadQuestions({ topic: ALL_TOPICS, subtopic: '', offset: 0, append: false })
       return
     }
 
     await loadSubtopics(topic)
-    await loadQuestions({ topic, subtopic: '', offset: 0, append: false })
   }
 
   const handleSelectSubtopic = async (subtopic) => {
@@ -369,26 +372,62 @@ function App() {
     setCurrentIndex(0)
     setHasMore(true)
     setAnswerMap({})
+
+    if (!subtopic) {
+      setHasMore(false)
+      return
+    }
+
     setTopicDrawerOpen(false)
     await loadQuestions({ topic: selectedTopic, subtopic, offset: 0, append: false })
   }
 
   const handleSelectOption = (question, optionIndex) => {
     const questionId = getQuestionId(question)
-    if (answerMap[questionId]) {
+    const existing = answerMap[questionId]
+    if (existing?.submitted) {
       return
     }
 
-    const isCorrect =
-      question.correct_option_indices?.includes(optionIndex) ||
-      optionIndex === question.correct_option_index
+    const isMultiSelect = (question.correct_option_indices?.length ?? 0) > 1
+
+    if (!isMultiSelect) {
+      const selected = [optionIndex]
+      setAnswerMap((previous) => ({
+        ...previous,
+        [questionId]: { selected, submitted: true, isCorrect: isAnswerCorrect(question, selected) },
+      }))
+      return
+    }
+
+    const current = existing?.selected ?? []
+    const selected = current.includes(optionIndex)
+      ? current.filter((index) => index !== optionIndex)
+      : [...current, optionIndex]
     setAnswerMap((previous) => ({
       ...previous,
-      [questionId]: {
-        optionIndex,
-        isCorrect,
-      },
+      [questionId]: { selected, submitted: false, isCorrect: false },
     }))
+  }
+
+  const handleSubmitAnswer = (question) => {
+    const questionId = getQuestionId(question)
+    const selected = answerMap[questionId]?.selected ?? []
+    if (!selected.length) {
+      return
+    }
+
+    setAnswerMap((previous) => ({
+      ...previous,
+      [questionId]: { selected, submitted: true, isCorrect: isAnswerCorrect(question, selected) },
+    }))
+  }
+
+  const refreshAfterWrite = async () => {
+    await loadTopics()
+    if (selectedTopic !== ALL_TOPICS) {
+      await loadSubtopics(selectedTopic)
+    }
   }
 
   const handleNext = async () => {
@@ -415,10 +454,13 @@ function App() {
   }
 
   const handleRefresh = async () => {
-    await Promise.all([
-      loadTopics(),
-      loadQuestions({ topic: selectedTopic, subtopic: selectedSubtopic, offset: 0, append: false }),
-    ])
+    await loadTopics()
+    if (selectedTopic !== ALL_TOPICS) {
+      await loadSubtopics(selectedTopic)
+    }
+    if (selectedTopic !== ALL_TOPICS && selectedSubtopic) {
+      await loadQuestions({ topic: selectedTopic, subtopic: selectedSubtopic, offset: 0, append: false })
+    }
   }
 
   const handleBulkIngest = async (event) => {
@@ -426,8 +468,9 @@ function App() {
 
     try {
       const parsed = JSON.parse(bulkJson)
-      await bulkIngestQuestions(parsed)
-      setAdminMessage('Bulk ingest request sent successfully.')
+      const result = await bulkIngestQuestions(Array.isArray(parsed) ? parsed : [parsed])
+      setAdminMessage(`Inserted ${result?.inserted_count ?? 0} question(s).`)
+      await refreshAfterWrite()
     } catch (ingestError) {
       setAdminMessage(ingestError.message || 'Bulk ingest failed.')
     }
@@ -447,6 +490,17 @@ function App() {
         explanation: editForm.explanation || undefined,
       })
       setAdminMessage('Question updated successfully.')
+      setQuestions((previous) =>
+        previous.map((question) =>
+          question.id === editForm.questionId.trim()
+            ? {
+                ...question,
+                question_text: editForm.questionText || question.question_text,
+                explanation: editForm.explanation || question.explanation,
+              }
+            : question,
+        ),
+      )
     } catch (patchError) {
       setAdminMessage(patchError.message || 'Question update failed.')
     }
@@ -470,6 +524,31 @@ function App() {
     }
   }
 
+  const handleDeleteQuestion = async (event) => {
+    event.preventDefault()
+    const questionId = deleteId.trim()
+
+    if (!questionId) {
+      setAdminMessage('Question id is required for DELETE.')
+      return
+    }
+
+    if (!window.confirm(`Delete question ${questionId}? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      await deleteQuestion(questionId)
+      setAdminMessage('Question deleted.')
+      setDeleteId('')
+      setQuestions((previous) => previous.filter((question) => question.id !== questionId))
+      setCurrentIndex((previous) => Math.max(0, Math.min(previous, questions.length - 2)))
+      await refreshAfterWrite()
+    } catch (deleteError) {
+      setAdminMessage(deleteError.message || 'Question delete failed.')
+    }
+  }
+
   const handleRenameTopic = async (event) => {
     event.preventDefault()
 
@@ -479,8 +558,10 @@ function App() {
     }
 
     try {
-      await renameTopic(renameTopicForm.topic.trim(), renameTopicForm.nextName.trim())
-      setAdminMessage('Topic rename request sent successfully.')
+      const result = await renameTopic(renameTopicForm.topic.trim(), renameTopicForm.nextName.trim())
+      setAdminMessage(
+        result?.modified_count ? `Renamed topic on ${result.modified_count} question(s).` : 'No questions matched that topic.',
+      )
       await loadTopics()
     } catch (renameError) {
       setAdminMessage(renameError.message || 'Topic rename failed.')
@@ -496,12 +577,16 @@ function App() {
     }
 
     try {
-      await renameSubtopic(
+      const result = await renameSubtopic(
         renameSubtopicForm.topic.trim(),
         renameSubtopicForm.subtopic.trim(),
         renameSubtopicForm.nextName.trim(),
       )
-      setAdminMessage('Subtopic rename request sent successfully.')
+      setAdminMessage(
+        result?.modified_count
+          ? `Renamed subtopic on ${result.modified_count} question(s).`
+          : 'No questions matched that topic/subtopic.',
+      )
       if (selectedTopic !== ALL_TOPICS) {
         await loadSubtopics(selectedTopic)
       }
@@ -604,6 +689,12 @@ function App() {
         onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
         onToggleAdmin={() => setAdminOpen((previous) => !previous)}
         isFocusMode={focusModeOpen}
+        user={user}
+        onLogin={() => {
+          setAuthNotice('')
+          setAuthOpen(true)
+        }}
+        onLogout={handleLogout}
       />
 
       <main className="mx-auto flex w-full max-w-7xl flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4 pt-3 lg:flex-row lg:gap-6 lg:px-6">
@@ -615,7 +706,6 @@ function App() {
           loading={topicsLoading}
           onSelectSubtopic={handleSelectSubtopic}
           onSelectTopic={handleSelectTopic}
-          onSelectAllTopics={() => handleSelectTopic(ALL_TOPICS)}
           subtopics={subtopics}
           topics={topics}
         />
@@ -667,6 +757,7 @@ function App() {
                 onNext={handleNext}
                 onPrevious={handlePrevious}
                 onSelectOption={handleSelectOption}
+                onSubmitAnswer={handleSubmitAnswer}
                 questionsCount={questions.length}
               />
             ) : (
@@ -675,10 +766,17 @@ function App() {
                   <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-cyan-300">
                     <BookOpen className="h-8 w-8" />
                   </div>
-                  <h2 className="text-2xl font-semibold text-white">Pick a topic to start practicing</h2>
+                  <h2 className="text-2xl font-semibold text-white">
+                    {questionsLoading
+                      ? 'Loading questions...'
+                      : selectedTopic === ALL_TOPICS
+                        ? 'Pick a topic to start practicing'
+                        : selectedSubtopic
+                          ? 'No questions in this subtopic yet'
+                          : `Pick a subtopic in ${selectedTopic}`}
+                  </h2>
                   <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                    The app will fetch topics on load, then stream questions with instant feedback, explanation cards,
-                    and pagination-aware navigation.
+                    Choose a topic to see its subtopics, then choose a subtopic to load its questions.
                   </p>
                 </div>
               </div>
@@ -716,6 +814,7 @@ function App() {
                   onNext={handleNext}
                   onPrevious={handlePrevious}
                   onSelectOption={handleSelectOption}
+                  onSubmitAnswer={handleSubmitAnswer}
                   questionsCount={questions.length}
                 />
               ) : (
@@ -761,7 +860,6 @@ function App() {
                 loading={topicsLoading}
                 onSelectSubtopic={handleSelectSubtopic}
                 onSelectTopic={handleSelectTopic}
-                onSelectAllTopics={() => handleSelectTopic(ALL_TOPICS)}
                 subtopics={subtopics}
                 topics={topics}
               />
@@ -770,7 +868,11 @@ function App() {
         </div>
       ) : null}
 
-      {adminOpen ? (
+      {authOpen ? (
+        <AuthModal notice={authNotice} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
+      ) : null}
+
+      {adminOpen && user?.role === 'admin' ? (
         <div className="fixed inset-0 z-20 flex justify-end bg-slate-950/70 backdrop-blur-sm">
           <button
             type="button"
@@ -871,6 +973,25 @@ function App() {
                   {JSON.stringify(questionLookupResult, null, 2)}
                 </pre>
               ) : null}
+            </form>
+
+            <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleDeleteQuestion}>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Delete question</h3>
+                <p className="mt-1 text-sm text-slate-400">Calls DELETE /api/questions/{'{question_id}'}.</p>
+              </div>
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
+                placeholder="Question id"
+                value={deleteId}
+                onChange={(event) => setDeleteId(event.target.value)}
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-2xl border border-rose-400/40 bg-rose-500/15 px-4 py-2.5 text-sm font-semibold text-rose-100 transition hover:border-rose-300 hover:bg-rose-400/20"
+              >
+                Delete question
+              </button>
             </form>
 
             <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleRenameTopic}>

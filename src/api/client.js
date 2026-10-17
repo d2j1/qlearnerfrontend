@@ -1,5 +1,48 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://qlearner.onrender.com'
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://qlearner.onrender.com'
 const DEFAULT_TIMEOUT_MS = 15000
+const TOKEN_KEY = 'mcq_token'
+
+export const tokenStore = {
+  get: () => {
+    try {
+      return localStorage.getItem(TOKEN_KEY)
+    } catch {
+      return null
+    }
+  },
+  set: (token) => {
+    try {
+      localStorage.setItem(TOKEN_KEY, token)
+    } catch {
+      // storage unavailable; session lasts until reload
+    }
+  },
+  clear: () => {
+    try {
+      localStorage.removeItem(TOKEN_KEY)
+    } catch {
+      // ignore
+    }
+  },
+}
+
+let onUnauthorized = () => {}
+export function setOnUnauthorized(handler) {
+  onUnauthorized = handler
+}
+
+// Backend errors are { detail: string | [{ loc, msg, type }] }
+function getErrorMessage(body, status) {
+  const detail = body?.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (Array.isArray(detail) && detail.length) {
+    return detail.map((item) => `${item.loc?.slice(1).join('.') || 'request'}: ${item.msg}`).join('; ')
+  }
+  return body?.message || body?.error || `Request failed with status ${status}.`
+}
 
 export class ApiError extends Error {
   constructor(message, { status = 0, details = null, isTimeout = false } = {}) {
@@ -50,12 +93,15 @@ export async function request(path, { method = 'GET', body, headers = {}, signal
     signal.addEventListener('abort', abortExternalSignal, { once: true })
   }
 
+  const token = tokenStore.get()
+
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers: {
         Accept: 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -65,8 +111,11 @@ export async function request(path, { method = 'GET', body, headers = {}, signal
     const parsedBody = await parseResponse(response)
 
     if (!response.ok) {
-      const message =
-        parsedBody?.message || parsedBody?.error || parsedBody?.detail || `Request failed with status ${response.status}.`
+      const message = getErrorMessage(parsedBody, response.status)
+      if (response.status === 401 && token) {
+        tokenStore.clear()
+        onUnauthorized()
+      }
       const apiError = new ApiError(message, { status: response.status, details: parsedBody })
       console.error('API Request Failed:', {
         path,
@@ -101,24 +150,58 @@ export async function request(path, { method = 'GET', body, headers = {}, signal
   }
 }
 
+const enc = encodeURIComponent
+
+// Auth
+export async function register({ email, name, password }, options = {}) {
+  const payload = await request('/api/auth/register', { method: 'POST', body: { email, name, password }, ...options })
+  tokenStore.set(payload.access_token)
+  return payload.user
+}
+
+export async function login({ email, password }, options = {}) {
+  const payload = await request('/api/auth/login', { method: 'POST', body: { email, password }, ...options })
+  tokenStore.set(payload.access_token)
+  return payload.user
+}
+
+export function getMe(options = {}) {
+  return request('/api/auth/me', options)
+}
+
+export function logout() {
+  tokenStore.clear()
+}
+
+// Practice flow
 export function getTopics(options = {}) {
   return request('/api/topics', options)
 }
 
-export function getQuestions({ topic, subtopic, limit = 10, offset = 0, signal } = {}) {
+export function getSubtopics(topic, options = {}) {
+  return request(`/api/topics/${enc(topic)}/subtopics`, options)
+}
+
+export function getSubtopicQuestions(topic, subtopic, { limit = 20, offset = 0, signal } = {}) {
+  const query = buildQueryString({ limit, offset })
+  return request(`/api/topics/${enc(topic)}/subtopics/${enc(subtopic)}/questions${query}`, { signal })
+}
+
+export function getQuestions({ topic, subtopic, limit = 20, offset = 0, signal } = {}) {
   const query = buildQueryString({ topic, subtopic, limit, offset })
   return request(`/api/questions${query}`, { signal })
 }
 
-export function getTopicQuestions(topic, { limit = 10, offset = 0, signal } = {}) {
+export function getTopicQuestions(topic, { limit = 20, offset = 0, signal } = {}) {
   const query = buildQueryString({ limit, offset })
-  return request(`/api/topics/${encodeURIComponent(topic)}/questions${query}`, { signal })
+  return request(`/api/topics/${enc(topic)}/questions${query}`, { signal })
 }
 
 export function getQuestionById(questionId, options = {}) {
-  return request(`/api/questions/${encodeURIComponent(questionId)}`, options)
+  return request(`/api/questions/${enc(questionId)}`, options)
 }
 
+// Admin
 export function bulkIngestQuestions(questions, options = {}) {
   return request('/api/questions/bulk', {
     method: 'POST',
@@ -128,15 +211,19 @@ export function bulkIngestQuestions(questions, options = {}) {
 }
 
 export function patchQuestion(questionId, fields, options = {}) {
-  return request(`/api/questions/${encodeURIComponent(questionId)}`, {
+  return request(`/api/questions/${enc(questionId)}`, {
     method: 'PATCH',
     body: fields,
     ...options,
   })
 }
 
+export function deleteQuestion(questionId, options = {}) {
+  return request(`/api/questions/${enc(questionId)}`, { method: 'DELETE', ...options })
+}
+
 export function renameTopic(topic, nextName, options = {}) {
-  return request(`/api/topics/${encodeURIComponent(topic)}/rename`, {
+  return request(`/api/topics/${enc(topic)}/rename`, {
     method: 'PUT',
     body: { new_topic: nextName },
     ...options,
@@ -144,7 +231,7 @@ export function renameTopic(topic, nextName, options = {}) {
 }
 
 export function renameSubtopic(topic, subtopic, nextName, options = {}) {
-  return request(`/api/topics/${encodeURIComponent(topic)}/subtopics/${encodeURIComponent(subtopic)}/rename`, {
+  return request(`/api/topics/${enc(topic)}/subtopics/${enc(subtopic)}/rename`, {
     method: 'PUT',
     body: { new_subtopic: nextName },
     ...options,

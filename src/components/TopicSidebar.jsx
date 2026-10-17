@@ -6,7 +6,6 @@ function TopicSidebar({
   currentSubtopic,
   className = '',
   loading,
-  onSelectAllTopics,
   onSelectSubtopic,
   onSelectTopic,
   panelClassName = '',
@@ -28,14 +27,9 @@ function TopicSidebar({
           <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Browse</p>
           <h2 className="mt-1 text-xl font-semibold text-white">Topics & subtopics</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Start in All Topics mode or narrow down to a topic and subtopic.
+            Pick a topic, then a subtopic to start solving questions.
           </p>
         </div>
-
-        <button type="button" className={topicItemClass(currentTopic === allTopicsLabel)} onClick={onSelectAllTopics}>
-          <span>All Topics</span>
-          <ChevronRight className="h-4 w-4" />
-        </button>
 
         <div className={`max-h-[28rem] space-y-2 overflow-y-auto pr-1 ${topicListClassName}`}>
           {loading ? (
@@ -84,19 +78,8 @@ function TopicSidebar({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={`rounded-full border px-3 py-2 text-xs transition ${
-                  currentSubtopic
-                    ? 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-cyan-400 hover:text-cyan-200'
-                    : 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100'
-                }`}
-                onClick={() => onSelectSubtopic('')}
-              >
-                All subtopics
-              </button>
               {subtopics.length ? (
-                subtopics.map((subtopic) => {
+                subtopics.map(({ subtopic, question_count: questionCount }) => {
                   const isActive = currentSubtopic === subtopic
                   return (
                     <button
@@ -110,11 +93,14 @@ function TopicSidebar({
                       onClick={() => onSelectSubtopic(subtopic)}
                     >
                       {subtopic}
+                      {typeof questionCount === 'number' ? (
+                        <span className="ml-1.5 rounded-full bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{questionCount}</span>
+                      ) : null}
                     </button>
                   )
                 })
               ) : (
-                <p className="text-sm text-slate-500">Subtopics will populate after the topic data loads.</p>
+                <p className="text-sm text-slate-500">Loading subtopics...</p>
               )}
             </div>
           </section>

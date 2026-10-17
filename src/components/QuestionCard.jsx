@@ -12,10 +12,12 @@ function QuestionCard({
   onNext,
   onPrevious,
   onSelectOption,
+  onSubmitAnswer,
   questionsCount,
 }) {
-  const isAnswered = Boolean(currentSelection)
-  const selectedCorrectly = currentSelection?.isCorrect ?? false
+  const isAnswered = Boolean(currentSelection?.submitted)
+  const selected = currentSelection?.selected ?? []
+  const isMultiSelect = (currentQuestion.correct_option_indices?.length ?? 0) > 1
 
   return (
     <article className="flex h-full min-h-0 flex-col overflow-hidden rounded-[2rem] border border-slate-700/80 bg-slate-950/75 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl">
@@ -26,20 +28,36 @@ function QuestionCard({
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 sm:px-6">
-        {currentQuestion.options?.map((option) => (
+        {isMultiSelect ? (
+          <p className="text-xs uppercase tracking-[0.2em] text-amber-300">
+            Select all that apply ({currentQuestion.correct_option_indices.length} correct)
+          </p>
+        ) : null}
+
+        {currentQuestion.options?.map((option, position) => (
           <OptionButton
             key={option.index}
-            correctOptionIndex={currentQuestion.correct_option_index}
             correctOptionIndices={currentQuestion.correct_option_indices}
             disabled={isAnswered}
             isAnswered={isAnswered}
-            isSelected={currentSelection?.optionIndex === option.index}
+            isSelected={selected.includes(option.index)}
+            label={String.fromCharCode(65 + position)}
             option={option}
             optionIndex={option.index}
             onClick={(optionIndex) => onSelectOption(currentQuestion, optionIndex)}
-            selectedCorrectly={selectedCorrectly}
           />
         ))}
+
+        {isMultiSelect && !isAnswered ? (
+          <button
+            type="button"
+            className="rounded-2xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-400/20 disabled:opacity-50"
+            disabled={!selected.length}
+            onClick={() => onSubmitAnswer(currentQuestion)}
+          >
+            Submit answer
+          </button>
+        ) : null}
 
         <ExplanationBox explanation={currentQuestion.explanation} isVisible={isAnswered} />
       </div>
