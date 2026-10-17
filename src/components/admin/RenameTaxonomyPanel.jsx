@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
-import { getTaxonomy, renameSubtopic, renameTopic } from '../api/client'
+import { getTaxonomy, renameSubtopic, renameTopic } from '../../api/client'
 
 const sectionClass = 'space-y-3 rounded-3xl border border-slate-700 bg-slate-900/60 p-4'
 const fieldClass =
@@ -154,7 +154,7 @@ function RenameTaxonomyPanel({ onRenamed }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       <form className={sectionClass} onSubmit={submitTopic}>
         <div>
           <h3 className="text-lg font-semibold text-white">Rename topic</h3>

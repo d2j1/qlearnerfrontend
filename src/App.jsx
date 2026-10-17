@@ -14,7 +14,6 @@ import AuthModal from './components/AuthModal'
 import { isAdminPath } from './components/admin/helpers'
 import Navbar from './components/Navbar'
 import QuestionCard from './components/QuestionCard'
-import RenameTaxonomyPanel from './components/RenameTaxonomyPanel'
 import TopicSidebar from './components/TopicSidebar'
 import { navigate, useLocation } from './lib/router'
 
@@ -52,7 +51,6 @@ function App() {
   const [spinnerUp, setSpinnerUp] = useState(false)
   const [error, setError] = useState('')
   const [answerMap, setAnswerMap] = useState({})
-  const [adminOpen, setAdminOpen] = useState(false)
   const [questionAction, setQuestionAction] = useState(null) // { type: 'edit' | 'delete', question }
   const [user, setUser] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
@@ -90,7 +88,6 @@ function App() {
     setOnUnauthorized(() => {
       const wasLoggedIn = Boolean(userRef.current)
       setUser(null)
-      setAdminOpen(false)
       if (wasLoggedIn) {
         setAuthNotice('Your session expired. Please log in again.')
         setAuthOpen(true)
@@ -118,7 +115,6 @@ function App() {
   const handleLogout = () => {
     logout()
     setUser(null)
-    setAdminOpen(false)
   }
 
   useEffect(() => {
@@ -423,16 +419,6 @@ function App() {
     setCurrentIndex((previousIndex) => Math.max(previousIndex - 1, 0))
   }
 
-  const handleRefresh = async () => {
-    await loadTopics()
-    if (selectedTopic !== ALL_TOPICS) {
-      await loadSubtopics(selectedTopic)
-    }
-    if (selectedTopic !== ALL_TOPICS && selectedSubtopic) {
-      await loadQuestions({ topic: selectedTopic, subtopic: selectedSubtopic, offset: 0, append: false })
-    }
-  }
-
   // Back from the admin screens: approvals change topics and subtopic counts. "?topic=" opens that topic.
   useEffect(() => {
     const cameFromAdmin = wasOnAdminPageRef.current
@@ -481,30 +467,6 @@ function App() {
     setQuestions((previous) => previous.filter((question) => question.id !== questionId))
     setCurrentIndex((previous) => Math.max(0, Math.min(previous, questions.length - 2)))
     await refreshAfterWrite()
-  }
-
-  // Keep the practice view on the renamed topic/subtopic and refresh counts.
-  const handleRenamed = async ({ kind, topic, from, to }) => {
-    if (kind === 'topic') {
-      await loadTopics()
-      if (selectedTopic !== from) {
-        return
-      }
-      setSelectedTopic(to)
-      setQuestions((list) => list.map((question) => ({ ...question, topic: to })))
-      await loadSubtopics(to)
-      return
-    }
-
-    if (selectedTopic !== topic) {
-      return
-    }
-    await loadSubtopics(topic)
-    if (selectedSubtopic === from) {
-      setSelectedSubtopic(to)
-      // A merge can bring in more questions, so reload the list.
-      await loadQuestions({ topic, subtopic: to, offset: 0, append: false })
-    }
   }
 
   if (appState !== 'ready') {
@@ -594,13 +556,13 @@ function App() {
       <div className="fixed inset-0 -z-10 bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] bg-[size:42px_42px] opacity-30" />
 
       <Navbar
-        currentSelection={selectedTopicLabel}
-        isBusy={topicsLoading || questionsLoading}
-        isWarmup={spinnerUp}
-        onRefresh={handleRefresh}
+        onHome={() => {
+          navigate('/')
+          void handleSelectTopic(ALL_TOPICS)
+          setFocusModeOpen(false)
+        }}
         onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
-        onToggleAdmin={() => setAdminOpen((previous) => !previous)}
-        onOpenStudio={() => navigate('/admin/notes')}
+        onOpenAdmin={() => navigate('/admin/topics')}
         isFocusMode={focusModeOpen}
         user={user}
         onLogin={() => {
@@ -657,11 +619,6 @@ function App() {
               <ChevronRight className="h-4 w-4 text-emerald-300" />
               {selectedTopicLabel}
             </span>
-            {hasMore ? (
-              <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-cyan-200">
-                More questions available
-              </span>
-            ) : null}
           </div>
 
           {error ? (
@@ -820,51 +777,6 @@ function App() {
         </Suspense>
       ) : null}
 
-      {adminOpen && user?.role === 'admin' ? (
-        <div className="fixed inset-0 z-20 flex justify-end bg-slate-950/70 backdrop-blur-sm">
-          <button
-            type="button"
-            className="flex-1 cursor-default"
-            aria-label="Close admin drawer"
-            onClick={() => setAdminOpen(false)}
-          />
-          <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-slate-700 bg-slate-950 p-5 shadow-2xl shadow-black/30 sm:p-6">
-            <div className="mb-6 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Management</p>
-                <h2 className="mt-1 text-2xl font-semibold text-white">Quick Admin Drawer</h2>
-                <p className="mt-2 text-sm text-slate-400">Manage questions and rename topics or subtopics.</p>
-              </div>
-              <button
-                type="button"
-                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-cyan-200"
-                onClick={() => setAdminOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-3xl border border-slate-700 bg-slate-900/60 p-4 text-left transition hover:border-cyan-400"
-              onClick={() => {
-                setAdminOpen(false)
-                navigate('/admin/questions')
-              }}
-            >
-              <span>
-                <span className="block text-lg font-semibold text-white">Manage questions</span>
-                <span className="mt-1 block text-sm text-slate-400">Search, edit and delete questions. Edit and Delete are also on each practice card.</span>
-              </span>
-              <ChevronRight className="h-5 w-5 text-slate-400" />
-            </button>
-
-            <div className="mt-4">
-              <RenameTaxonomyPanel onRenamed={handleRenamed} />
-            </div>
-          </aside>
-        </div>
-      ) : null}
     </div>
   )
 }

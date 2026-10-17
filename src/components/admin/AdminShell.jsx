@@ -14,6 +14,7 @@ import NoteReader from './NoteReader'
 import NotesPage from './NotesPage'
 import PromptsPage from './PromptsPage'
 import QuestionsPage from './QuestionsPage'
+import TopicsPage from './TopicsPage'
 import { AdminRequired } from './ui'
 
 const ADMIN_TABS = [
@@ -22,6 +23,7 @@ const ADMIN_TABS = [
   ['/admin/jobs', 'Jobs'],
   ['/admin/drafts', 'Drafts'],
   ['/admin/questions', 'Questions'],
+  ['/admin/topics', 'Topics'],
   ['/settings/prompts', 'Prompts'],
   ['/settings/models', 'Models'],
 ]
@@ -44,6 +46,7 @@ function renderPage(pathname, query) {
   if (matchPath('/admin/questions', pathname)) {
     return <QuestionsPage topic={query.get('topic') ?? ''} subtopic={query.get('subtopic') ?? ''} q={query.get('q') ?? ''} />
   }
+  if (matchPath('/admin/topics', pathname)) return <TopicsPage />
   if (matchPath('/settings/prompts', pathname)) return <PromptsPage selectedId={query.get('id')} />
   if (matchPath('/settings/models', pathname)) return <ModelSettings />
   return <p className="text-slate-400">Page not found.</p>
