@@ -187,8 +187,8 @@ export function getSubtopicQuestions(topic, subtopic, { limit = 20, offset = 0, 
   return request(`/api/topics/${enc(topic)}/subtopics/${enc(subtopic)}/questions${query}`, { signal })
 }
 
-export function getQuestions({ topic, subtopic, limit = 20, offset = 0, signal } = {}) {
-  const query = buildQueryString({ topic, subtopic, limit, offset })
+export function getQuestions({ topic, subtopic, q, limit = 20, offset = 0, signal } = {}) {
+  const query = buildQueryString({ topic, subtopic, q: q?.trim() || undefined, limit, offset })
   return request(`/api/questions${query}`, { signal })
 }
 

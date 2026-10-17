@@ -12,6 +12,7 @@ import JobsPage from './JobsPage'
 import NoteEditor from './NoteEditor'
 import NotesPage from './NotesPage'
 import PromptsPage from './PromptsPage'
+import QuestionsPage from './QuestionsPage'
 import { AdminRequired } from './ui'
 
 const ADMIN_TABS = [
@@ -19,6 +20,7 @@ const ADMIN_TABS = [
   ['/admin/generate', 'Generate'],
   ['/admin/jobs', 'Jobs'],
   ['/admin/drafts', 'Drafts'],
+  ['/admin/questions', 'Questions'],
   ['/settings/prompts', 'Prompts'],
   ['/settings/models', 'Models'],
 ]
@@ -36,6 +38,9 @@ function renderPage(pathname, query) {
     const topic = query.get('topic')
     const subtopic = query.get('subtopic')
     return <DraftsPage key={`${jobId}|${topic}|${subtopic}`} jobId={jobId} topic={topic} subtopic={subtopic} />
+  }
+  if (matchPath('/admin/questions', pathname)) {
+    return <QuestionsPage topic={query.get('topic') ?? ''} subtopic={query.get('subtopic') ?? ''} q={query.get('q') ?? ''} />
   }
   if (matchPath('/settings/prompts', pathname)) return <PromptsPage selectedId={query.get('id')} />
   if (matchPath('/settings/models', pathname)) return <ModelSettings />
