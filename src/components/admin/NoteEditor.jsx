@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { ArrowLeft, Loader2, Sparkles } from 'lucide-react'
-import { createNote, deleteNote, getNote, getTopics, updateNote } from '../../api/client'
+import { createNote, deleteNote, getNote, getSubtopics, getTopics, listNotes, updateNote } from '../../api/client'
 import Link from '../../lib/Link'
 import { navigate, useNavigationBlocker } from '../../lib/router'
+import Combobox from './Combobox'
 import Markdown from './Markdown'
 import { generateFromNoteHref, useLoader } from './helpers'
 import { Banner, LoadState, PageHeader, TagInput, inputClass, primaryButtonClass, smallButtonClass } from './ui'
@@ -28,7 +29,24 @@ function NoteEditorForm({ note }) {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
   const [view, setView] = useState('split') // 'write' | 'split' | 'preview'
-  const topics = useLoader(() => getTopics(), [])
+  // Existing topics/subtopics from questions and other notes, so new notes can join them.
+  const taxonomy = useLoader(async () => {
+    const [topics, notes] = await Promise.all([getTopics(), listNotes({ limit: 200 })])
+    const noteSubtopics = {}
+    notes.items.forEach((item) => {
+      noteSubtopics[item.topic] = [...new Set([...(noteSubtopics[item.topic] ?? []), item.subtopic])]
+    })
+    return { topics: [...new Set([...(topics.topics ?? []), ...Object.keys(noteSubtopics)])].sort((a, b) => a.localeCompare(b)), noteSubtopics }
+  }, [])
+  const topicKey = form.topic.trim()
+  const knownTopic = Boolean(taxonomy.data?.topics.includes(topicKey))
+  const questionSubtopics = useLoader(
+    () => (knownTopic ? getSubtopics(topicKey).then((page) => page.subtopics.map((item) => item.subtopic)).catch(() => []) : Promise.resolve([])),
+    [topicKey, knownTopic],
+  )
+  const subtopicOptions = [...new Set([...(questionSubtopics.data ?? []), ...(taxonomy.data?.noteSubtopics[topicKey] ?? [])])].sort((a, b) =>
+    a.localeCompare(b),
+  )
 
   const changedFields = FIELDS.filter((field) => !sameValue(form[field], saved[field]))
   const dirty = changedFields.length > 0
@@ -149,12 +167,26 @@ function NoteEditorForm({ note }) {
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <label className="block text-sm text-slate-300">
           Topic
-          <input className={`${inputClass} mt-1`} list="note-topic-options" value={form.topic} onChange={(event) => setField('topic', event.target.value)} />
+          <Combobox
+            value={form.topic}
+            options={taxonomy.data?.topics ?? []}
+            loading={taxonomy.loading}
+            placeholder="Pick a topic or type a new one"
+            newLabel="New topic"
+            onChange={(topic) => setField('topic', topic)}
+          />
           {fieldError('topic')}
         </label>
         <label className="block text-sm text-slate-300">
           Subtopic
-          <input className={`${inputClass} mt-1`} value={form.subtopic} onChange={(event) => setField('subtopic', event.target.value)} />
+          <Combobox
+            value={form.subtopic}
+            options={subtopicOptions}
+            loading={questionSubtopics.loading}
+            placeholder={topicKey ? 'Pick a subtopic or type a new one' : 'Pick a topic first'}
+            newLabel="New subtopic"
+            onChange={(subtopic) => setField('subtopic', subtopic)}
+          />
           {fieldError('subtopic')}
         </label>
         <label className="block text-sm text-slate-300">
@@ -162,11 +194,6 @@ function NoteEditorForm({ note }) {
           <input className={`${inputClass} mt-1`} value={form.title} onChange={(event) => setField('title', event.target.value)} />
           {fieldError('title')}
         </label>
-        <datalist id="note-topic-options">
-          {(topics.data?.topics ?? []).map((value) => (
-            <option key={value} value={value} />
-          ))}
-        </datalist>
       </div>
 
       <div className="mb-4 text-sm text-slate-300">

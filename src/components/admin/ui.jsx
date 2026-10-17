@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import Link from '../../lib/Link'
 
@@ -179,5 +179,64 @@ export function Pager({ total, limit, offset, onChange }) {
         Next
       </button>
     </div>
+  )
+}
+
+// Centered overlay; closes on Escape or a click on the backdrop.
+export function Modal({ title, onClose, children, wide = false }) {
+  useEffect(() => {
+    const onKey = (event) => event.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`max-h-[90vh] w-full overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl shadow-black/40 ${wide ? 'max-w-2xl' : 'max-w-md'}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 className="mb-4 text-lg font-semibold text-white">{title}</h2>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+export const dangerButtonClass =
+  'inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-60'
+
+// Confirmation for destructive actions. `onConfirm` may be async; errors are shown in the dialog.
+export function ConfirmDialog({ title, body, confirmLabel = 'Delete', onConfirm, onCancel }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const confirm = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await onConfirm()
+    } catch (confirmError) {
+      setError(confirmError.message || 'Request failed.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title={title} onClose={busy ? () => {} : onCancel}>
+      <p className="text-sm text-slate-300">{body}</p>
+      {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+      <div className="mt-5 flex justify-end gap-2">
+        <button type="button" className={smallButtonClass} disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className={dangerButtonClass} disabled={busy} onClick={confirm}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {confirmLabel}
+        </button>
+      </div>
+    </Modal>
   )
 }

@@ -2,7 +2,6 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { BookOpen, ChevronRight, Loader2 } from 'lucide-react'
 import {
   bulkIngestQuestions,
-  deleteQuestion,
   getMe,
   getQuestionById,
   getQuestions,
@@ -10,7 +9,6 @@ import {
   getSubtopics,
   getTopics,
   logout,
-  patchQuestion,
   renameSubtopic,
   renameTopic,
   setOnUnauthorized,
@@ -25,6 +23,7 @@ import { navigate, useLocation } from './lib/router'
 
 // Admin screens pull in markdown + syntax highlighting; learners never download them.
 const AdminShell = lazy(() => import('./components/admin/AdminShell'))
+const PracticeQuestionActions = lazy(() => import('./components/admin/PracticeQuestionActions'))
 
 const PAGE_SIZE = 8
 const ALL_TOPICS = 'All Topics'
@@ -76,11 +75,7 @@ function App() {
   const [adminOpen, setAdminOpen] = useState(false)
   const [bulkJson, setBulkJson] = useState(sampleBulkPayload)
   const [adminMessage, setAdminMessage] = useState('')
-  const [editForm, setEditForm] = useState({
-    questionId: '',
-    questionText: '',
-    explanation: '',
-  })
+  const [questionAction, setQuestionAction] = useState(null) // { type: 'edit' | 'delete', question }
   const [questionLookupId, setQuestionLookupId] = useState('')
   const [questionLookupResult, setQuestionLookupResult] = useState(null)
   const [renameTopicForm, setRenameTopicForm] = useState({
@@ -92,7 +87,6 @@ function App() {
     subtopic: '',
     nextName: '',
   })
-  const [deleteId, setDeleteId] = useState('')
   const [user, setUser] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
   const [authNotice, setAuthNotice] = useState('')
@@ -514,34 +508,25 @@ function App() {
     }
   }
 
-  const handlePatchQuestion = async (event) => {
-    event.preventDefault()
-
-    if (!editForm.questionId.trim()) {
-      setAdminMessage('Question id is required for PATCH.')
-      return
-    }
-
-    try {
-      await patchQuestion(editForm.questionId.trim(), {
-        question_text: editForm.questionText || undefined,
-        explanation: editForm.explanation || undefined,
+  const handleQuestionSaved = (previous, updated) => {
+    setQuestions((list) => list.map((question) => (question.id === updated.id ? updated : question)))
+    const answerChanged =
+      JSON.stringify(previous.options) !== JSON.stringify(updated.options) ||
+      JSON.stringify(previous.correct_option_indices) !== JSON.stringify(updated.correct_option_indices)
+    if (answerChanged) {
+      // The old selection was graded against the old answer; let the user answer again.
+      setAnswerMap((map) => {
+        const next = { ...map }
+        delete next[getQuestionId(updated)]
+        return next
       })
-      setAdminMessage('Question updated successfully.')
-      setQuestions((previous) =>
-        previous.map((question) =>
-          question.id === editForm.questionId.trim()
-            ? {
-                ...question,
-                question_text: editForm.questionText || question.question_text,
-                explanation: editForm.explanation || question.explanation,
-              }
-            : question,
-        ),
-      )
-    } catch (patchError) {
-      setAdminMessage(patchError.message || 'Question update failed.')
     }
+  }
+
+  const handleQuestionDeleted = async (questionId) => {
+    setQuestions((previous) => previous.filter((question) => question.id !== questionId))
+    setCurrentIndex((previous) => Math.max(0, Math.min(previous, questions.length - 2)))
+    await refreshAfterWrite()
   }
 
   const handleGetQuestionById = async (event) => {
@@ -559,31 +544,6 @@ function App() {
     } catch (fetchError) {
       setQuestionLookupResult(null)
       setAdminMessage(fetchError.message || 'Fetching question by id failed.')
-    }
-  }
-
-  const handleDeleteQuestion = async (event) => {
-    event.preventDefault()
-    const questionId = deleteId.trim()
-
-    if (!questionId) {
-      setAdminMessage('Question id is required for DELETE.')
-      return
-    }
-
-    if (!window.confirm(`Delete question ${questionId}? This cannot be undone.`)) {
-      return
-    }
-
-    try {
-      await deleteQuestion(questionId)
-      setAdminMessage('Question deleted.')
-      setDeleteId('')
-      setQuestions((previous) => previous.filter((question) => question.id !== questionId))
-      setCurrentIndex((previous) => Math.max(0, Math.min(previous, questions.length - 2)))
-      await refreshAfterWrite()
-    } catch (deleteError) {
-      setAdminMessage(deleteError.message || 'Question delete failed.')
     }
   }
 
@@ -805,11 +765,14 @@ function App() {
           <div className="min-h-0 flex-1">
             {currentQuestion ? (
               <QuestionCard
+                canManage={user?.role === 'admin'}
                 currentIndex={currentIndex}
                 currentQuestion={currentQuestion}
                 currentSelection={currentAnswer}
                 hasMore={hasMore}
                 isLoading={questionsLoading}
+                onDelete={(question) => setQuestionAction({ type: 'delete', question })}
+                onEdit={(question) => setQuestionAction({ type: 'edit', question })}
                 onNext={handleNext}
                 onPrevious={handlePrevious}
                 onSelectOption={handleSelectOption}
@@ -862,12 +825,15 @@ function App() {
             <div className="min-h-0 flex-1">
               {currentQuestion ? (
                 <QuestionCard
+                  canManage={user?.role === 'admin'}
                   currentIndex={currentIndex}
                   currentQuestion={currentQuestion}
                   currentSelection={currentAnswer}
                   hasMore={hasMore}
                   immersive
                   isLoading={questionsLoading}
+                  onDelete={(question) => setQuestionAction({ type: 'delete', question })}
+                  onEdit={(question) => setQuestionAction({ type: 'edit', question })}
                   onNext={handleNext}
                   onPrevious={handlePrevious}
                   onSelectOption={handleSelectOption}
@@ -929,6 +895,17 @@ function App() {
         <AuthModal notice={authNotice} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
       ) : null}
 
+      {questionAction && user?.role === 'admin' ? (
+        <Suspense fallback={null}>
+          <PracticeQuestionActions
+            action={questionAction}
+            onClose={() => setQuestionAction(null)}
+            onSaved={handleQuestionSaved}
+            onDeleted={handleQuestionDeleted}
+          />
+        </Suspense>
+      ) : null}
+
       {adminOpen && user?.role === 'admin' ? (
         <div className="fixed inset-0 z-20 flex justify-end bg-slate-950/70 backdrop-blur-sm">
           <button
@@ -942,7 +919,7 @@ function App() {
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Management</p>
                 <h2 className="mt-1 text-2xl font-semibold text-white">Quick Admin Drawer</h2>
-                <p className="mt-2 text-sm text-slate-400">Bulk ingest question sets or patch question content inline.</p>
+                <p className="mt-2 text-sm text-slate-400">Bulk ingest question sets, look up a question by id, or rename topics.</p>
               </div>
               <button
                 type="button"
@@ -977,36 +954,20 @@ function App() {
               </button>
             </form>
 
-            <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handlePatchQuestion}>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Patch question</h3>
-                <p className="mt-1 text-sm text-slate-400">Update question text or explanation by id.</p>
-              </div>
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Question id"
-                value={editForm.questionId}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, questionId: event.target.value }))}
-              />
-              <textarea
-                className="min-h-24 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Question text"
-                value={editForm.questionText}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, questionText: event.target.value }))}
-              />
-              <textarea
-                className="min-h-24 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Explanation"
-                value={editForm.explanation}
-                onChange={(event) => setEditForm((previous) => ({ ...previous, explanation: event.target.value }))}
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-emerald-400/40 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300 hover:bg-emerald-400/20"
-              >
-                Submit PATCH request
-              </button>
-            </form>
+            <button
+              type="button"
+              className="mt-4 flex w-full items-center justify-between rounded-3xl border border-slate-700 bg-slate-900/60 p-4 text-left transition hover:border-cyan-400"
+              onClick={() => {
+                setAdminOpen(false)
+                navigate('/admin/questions')
+              }}
+            >
+              <span>
+                <span className="block text-lg font-semibold text-white">Manage questions</span>
+                <span className="mt-1 block text-sm text-slate-400">Search, edit and delete questions. Edit and Delete are also on each practice card.</span>
+              </span>
+              <ChevronRight className="h-5 w-5 text-slate-400" />
+            </button>
 
             <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleGetQuestionById}>
               <div>
@@ -1030,25 +991,6 @@ function App() {
                   {JSON.stringify(questionLookupResult, null, 2)}
                 </pre>
               ) : null}
-            </form>
-
-            <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleDeleteQuestion}>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Delete question</h3>
-                <p className="mt-1 text-sm text-slate-400">Calls DELETE /api/questions/{'{question_id}'}.</p>
-              </div>
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400"
-                placeholder="Question id"
-                value={deleteId}
-                onChange={(event) => setDeleteId(event.target.value)}
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-rose-400/40 bg-rose-500/15 px-4 py-2.5 text-sm font-semibold text-rose-100 transition hover:border-rose-300 hover:bg-rose-400/20"
-              >
-                Delete question
-              </button>
             </form>
 
             <form className="mt-4 space-y-4 rounded-3xl border border-slate-700 bg-slate-900/60 p-4" onSubmit={handleRenameTopic}>

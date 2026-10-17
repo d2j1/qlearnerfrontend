@@ -1,14 +1,20 @@
-import { ChevronRight, RefreshCw } from 'lucide-react'
+import { ChevronRight, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import ExplanationBox from './ExplanationBox'
 import OptionButton from './OptionButton'
 
+const manageButtonClass =
+  'rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-300 transition hover:text-white'
+
 function QuestionCard({
+  canManage = false,
   currentIndex,
   currentQuestion,
   currentSelection,
   hasMore,
   isLoading,
   immersive = false,
+  onDelete,
+  onEdit,
   onNext,
   onPrevious,
   onSelectOption,
@@ -22,9 +28,33 @@ function QuestionCard({
   return (
     <article className="flex h-full min-h-0 flex-col overflow-hidden rounded-[2rem] border border-slate-700/80 bg-slate-950/75 shadow-2xl shadow-cyan-950/10 backdrop-blur-xl">
       <div className={`border-b border-slate-800 px-5 py-4 sm:px-6 ${immersive ? 'border-b-0 pb-2' : ''}`}>
-        <h1 className={`text-2xl font-semibold leading-tight text-white sm:text-3xl ${immersive ? 'sm:text-4xl' : 'mt-4'}`}>
-          {currentQuestion.question_text}
-        </h1>
+        <div className="flex items-start gap-3">
+          <h1 className={`min-w-0 flex-1 text-2xl font-semibold leading-tight text-white sm:text-3xl ${immersive ? 'sm:text-4xl' : 'mt-4'}`}>
+            {currentQuestion.question_text}
+          </h1>
+          {canManage ? (
+            <div className={`flex shrink-0 gap-2 ${immersive ? '' : 'mt-4'}`}>
+              <button
+                type="button"
+                className={`${manageButtonClass} hover:border-cyan-400`}
+                title="Edit question"
+                aria-label="Edit question"
+                onClick={() => onEdit(currentQuestion)}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className={`${manageButtonClass} hover:border-rose-400 hover:text-rose-200`}
+                title="Delete question"
+                aria-label="Delete question"
+                onClick={() => onDelete(currentQuestion)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 sm:px-6">
