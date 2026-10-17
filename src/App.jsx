@@ -17,12 +17,14 @@ import {
   tokenStore,
 } from './api/client'
 import AuthModal from './components/AuthModal'
+import ModelSettings from './components/ModelSettings'
 import Navbar from './components/Navbar'
 import QuestionCard from './components/QuestionCard'
 import TopicSidebar from './components/TopicSidebar'
 
 const PAGE_SIZE = 8
 const ALL_TOPICS = 'All Topics'
+const MODELS_PATH = '/settings/models'
 
 const sampleBulkPayload = `[
   {
@@ -95,6 +97,20 @@ function App() {
   const [topicDrawerOpen, setTopicDrawerOpen] = useState(false)
   const [focusModeOpen, setFocusModeOpen] = useState(false)
   const spinnerTimerRef = useRef(null)
+  const [path, setPath] = useState(() => window.location.pathname)
+
+  useEffect(() => {
+    const handlePopState = () => setPath(window.location.pathname)
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const navigate = (nextPath) => {
+    if (nextPath !== window.location.pathname) {
+      window.history.pushState(null, '', nextPath)
+    }
+    setPath(nextPath)
+  }
 
   const currentQuestion = questions[currentIndex]
   const currentAnswer = currentQuestion ? answerMap[getQuestionId(currentQuestion)] : null
@@ -688,6 +704,7 @@ function App() {
         onRefresh={handleRefresh}
         onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
         onToggleAdmin={() => setAdminOpen((previous) => !previous)}
+        onOpenModels={() => navigate(MODELS_PATH)}
         isFocusMode={focusModeOpen}
         user={user}
         onLogin={() => {
@@ -697,6 +714,26 @@ function App() {
         onLogout={handleLogout}
       />
 
+      {path === MODELS_PATH ? (
+        user?.role === 'admin' ? (
+          <ModelSettings onBack={() => navigate('/')} />
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-6 text-center">
+            <div className="space-y-4">
+              <h2 className="text-2xl font-semibold text-white">
+                {!user && tokenStore.get() ? 'Checking your session…' : 'Admin access required'}
+              </h2>
+              <button
+                type="button"
+                className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 transition hover:border-cyan-400 hover:text-cyan-200"
+                onClick={() => navigate('/')}
+              >
+                Back to practice
+              </button>
+            </div>
+          </div>
+        )
+      ) : (
       <main className="mx-auto flex w-full max-w-7xl flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4 pt-3 lg:flex-row lg:gap-6 lg:px-6">
         <TopicSidebar
           className="hidden lg:block"
@@ -784,6 +821,7 @@ function App() {
           </div>
         </section>
       </main>
+      )}
 
       {focusModeOpen ? (
         <div className="fixed inset-0 z-30 bg-slate-950/95 px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4">

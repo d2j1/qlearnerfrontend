@@ -6,6 +6,7 @@ function Navbar({
   isWarmup,
   onRefresh,
   onToggleAdmin,
+  onOpenModels,
   onToggleFocus,
   isFocusMode,
   user,
@@ -55,6 +56,15 @@ function Navbar({
               onClick={onToggleAdmin}
             >
               Admin
+            </button>
+          ) : null}
+          {user?.role === 'admin' ? (
+            <button
+              type="button"
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 transition hover:border-cyan-400 hover:text-cyan-200"
+              onClick={onOpenModels}
+            >
+              Models
             </button>
           ) : null}
           {user ? (
