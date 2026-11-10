@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Pencil, Plus, Sparkles } from 'lucide-react'
-import { getTopics, listNotes } from '../../api/client'
+import { listNotes } from '../../api/client'
 import Link from '../../lib/Link'
 import { navigate } from '../../lib/router'
 import { formatRelative, formatSize, generateFromNoteHref, useLoader } from './helpers'
@@ -16,14 +16,24 @@ function NotesPage({ isAdmin = false, basePath = '/notes' }) {
   const [offset, setOffset] = useState(0)
 
   const notes = useLoader(
-    () => listNotes({ topic: topic.trim() || undefined, subtopic: subtopic.trim() || undefined, limit: PAGE_SIZE, offset }),
+    () => listNotes({ topic: topic || undefined, subtopic: subtopic || undefined, limit: PAGE_SIZE, offset }),
     [topic, subtopic, offset],
   )
-  const topics = useLoader(() => getTopics(), [])
+  // Filter options come from the notes themselves (public), so they only list values that have notes.
+  const taxonomy = useLoader(async () => {
+    const all = await listNotes({ limit: 200 })
+    const byTopic = {}
+    all.items.forEach((note) => {
+      byTopic[note.topic] = [...new Set([...(byTopic[note.topic] ?? []), note.subtopic])]
+    })
+    return byTopic
+  }, [])
 
   const items = notes.data?.items ?? []
-  const topicOptions = [...new Set([...(topics.data?.topics ?? []), ...items.map((note) => note.topic)])].sort()
-  const subtopicOptions = [...new Set(items.filter((note) => !topic || note.topic === topic).map((note) => note.subtopic))].sort()
+  const byTopic = taxonomy.data ?? {}
+  const sortText = (a, b) => a.localeCompare(b)
+  const topicOptions = Object.keys(byTopic).sort(sortText)
+  const subtopicOptions = topic ? [...(byTopic[topic] ?? [])].sort(sortText) : [...new Set(Object.values(byTopic).flat())].sort(sortText)
 
   return (
     <>
@@ -41,36 +51,39 @@ function NotesPage({ isAdmin = false, basePath = '/notes' }) {
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
-        <input
+        <select
           className={inputClass}
-          list="notes-topic-options"
-          placeholder="Filter by topic"
+          aria-label="Filter by topic"
           value={topic}
           onChange={(event) => {
             setTopic(event.target.value)
+            setSubtopic('')
             setOffset(0)
           }}
-        />
-        <input
+        >
+          <option value="">All topics</option>
+          {topicOptions.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+        <select
           className={inputClass}
-          list="notes-subtopic-options"
-          placeholder="Filter by subtopic"
+          aria-label="Filter by subtopic"
           value={subtopic}
           onChange={(event) => {
             setSubtopic(event.target.value)
             setOffset(0)
           }}
-        />
-        <datalist id="notes-topic-options">
-          {topicOptions.map((value) => (
-            <option key={value} value={value} />
-          ))}
-        </datalist>
-        <datalist id="notes-subtopic-options">
+        >
+          <option value="">{topic ? `All subtopics in ${topic}` : 'All subtopics'}</option>
           {subtopicOptions.map((value) => (
-            <option key={value} value={value} />
+            <option key={value} value={value}>
+              {value}
+            </option>
           ))}
-        </datalist>
+        </select>
       </div>
 
       {notes.error && [401, 403].includes(notes.error.status) ? (

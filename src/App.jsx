@@ -566,6 +566,9 @@ function App() {
         onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
         onOpenAdmin={() => navigate('/admin/topics')}
         onOpenNotes={() => navigate('/notes')}
+        // Back to questions, keeping the topic/subtopic already picked.
+        onOpenPractice={() => navigate('/')}
+        practiceActive={!onNotesPage && !onAdminPage}
         notesActive={onNotesPage}
         isFocusMode={focusModeOpen}
         user={user}
