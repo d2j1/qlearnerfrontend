@@ -118,7 +118,8 @@ function FocusReader({ note, onClose }) {
   )
 }
 
-function NoteReader({ noteId }) {
+// Public at /notes/:id; Edit and Generate only render for admins.
+function NoteReader({ noteId, isAdmin = false, basePath = '/notes' }) {
   const loader = useLoader(() => getNote(noteId), [noteId])
   const [focus, setFocus] = useState(false)
   // Stable so the focus overlay doesn't re-subscribe on every scroll re-render.
@@ -129,6 +130,9 @@ function NoteReader({ noteId }) {
     if (loader.error?.status === 404) {
       return <Banner tone="error">This note no longer exists.</Banner>
     }
+    if ([401, 403].includes(loader.error?.status)) {
+      return <Banner tone="warning">Reading notes without logging in isn't available on this server yet.</Banner>
+    }
     return <LoadState loader={loader} label="Loading note…" />
   }
 
@@ -136,7 +140,7 @@ function NoteReader({ noteId }) {
 
   return (
     <>
-      <Link to="/admin/notes" className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-cyan-200">
+      <Link to={basePath} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-cyan-200">
         <ArrowLeft className="h-4 w-4" /> All notes
       </Link>
 
@@ -160,16 +164,20 @@ function NoteReader({ noteId }) {
           >
             <Maximize2 className="h-4 w-4" /> Focus mode
           </button>
-          <button type="button" className={`${smallButtonClass} inline-flex items-center gap-1 py-2 text-sm`} onClick={() => navigate(editHref)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </button>
-          <button
-            type="button"
-            className={`${smallButtonClass} inline-flex items-center gap-1 py-2 text-sm`}
-            onClick={() => navigate(generateFromNoteHref(note))}
-          >
-            <Sparkles className="h-3.5 w-3.5" /> Generate questions
-          </button>
+          {isAdmin ? (
+            <>
+              <button type="button" className={`${smallButtonClass} inline-flex items-center gap-1 py-2 text-sm`} onClick={() => navigate(editHref)}>
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button
+                type="button"
+                className={`${smallButtonClass} inline-flex items-center gap-1 py-2 text-sm`}
+                onClick={() => navigate(generateFromNoteHref(note))}
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Generate questions
+              </button>
+            </>
+          ) : null}
         </div>
       </header>
 

@@ -4,6 +4,10 @@ export function isAdminPath(pathname) {
   return pathname.startsWith('/admin') || pathname.startsWith('/settings')
 }
 
+export function isPublicNotesPath(pathname) {
+  return pathname === '/notes' || pathname.startsWith('/notes/')
+}
+
 export function generateFromNoteHref(note) {
   return `/admin/generate?note_id=${encodeURIComponent(note.id)}`
 }

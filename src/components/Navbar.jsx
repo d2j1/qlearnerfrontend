@@ -1,8 +1,10 @@
-import { BookOpen, LogIn, LogOut } from 'lucide-react'
+import { BookOpen, LogIn, LogOut, NotebookText } from 'lucide-react'
 
 function Navbar({
   onHome,
   onOpenAdmin,
+  onOpenNotes,
+  notesActive,
   onToggleFocus,
   isFocusMode,
   user,
@@ -23,6 +25,19 @@ function Navbar({
         </button>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            aria-current={notesActive ? 'page' : undefined}
+            className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm transition ${
+              notesActive
+                ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-100'
+                : 'border-slate-700 bg-slate-900 text-slate-100 hover:border-cyan-400 hover:text-cyan-200'
+            }`}
+            onClick={onOpenNotes}
+          >
+            <NotebookText className="h-4 w-4" />
+            <span className="hidden sm:inline">Notes</span>
+          </button>
           <button
             type="button"
             className="rounded-2xl border border-cyan-400/30 bg-cyan-500/15 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-400/20"

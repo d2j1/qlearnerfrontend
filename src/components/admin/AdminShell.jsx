@@ -30,10 +30,10 @@ const ADMIN_TABS = [
 
 function renderPage(pathname, query) {
   let params
-  if (matchPath('/admin/notes', pathname)) return <NotesPage />
+  if (matchPath('/admin/notes', pathname)) return <NotesPage isAdmin basePath="/admin/notes" />
   if (matchPath('/admin/notes/new', pathname)) return <NoteEditor key="new" noteId={null} />
   if ((params = matchPath('/admin/notes/:id/edit', pathname))) return <NoteEditor key={params.id} noteId={params.id} />
-  if ((params = matchPath('/admin/notes/:id', pathname))) return <NoteReader key={params.id} noteId={params.id} />
+  if ((params = matchPath('/admin/notes/:id', pathname))) return <NoteReader key={params.id} noteId={params.id} isAdmin basePath="/admin/notes" />
   if (matchPath('/admin/generate', pathname)) return <GeneratePage noteId={query.get('note_id')} />
   if (matchPath('/admin/jobs', pathname)) return <JobsPage />
   if ((params = matchPath('/admin/jobs/:id', pathname))) return <JobPage key={params.id} jobId={params.id} />

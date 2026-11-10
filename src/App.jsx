@@ -11,7 +11,7 @@ import {
   tokenStore,
 } from './api/client'
 import AuthModal from './components/AuthModal'
-import { isAdminPath } from './components/admin/helpers'
+import { isAdminPath, isPublicNotesPath } from './components/admin/helpers'
 import Navbar from './components/Navbar'
 import QuestionCard from './components/QuestionCard'
 import TopicSidebar from './components/TopicSidebar'
@@ -19,6 +19,7 @@ import { navigate, useLocation } from './lib/router'
 
 // Admin screens pull in markdown + syntax highlighting; learners never download them.
 const AdminShell = lazy(() => import('./components/admin/AdminShell'))
+const PublicNotes = lazy(() => import('./components/admin/PublicNotes'))
 const PracticeQuestionActions = lazy(() => import('./components/admin/PracticeQuestionActions'))
 
 const PAGE_SIZE = 8
@@ -61,6 +62,7 @@ function App() {
   const spinnerTimerRef = useRef(null)
   const { pathname, query } = useLocation()
   const onAdminPage = isAdminPath(pathname)
+  const onNotesPage = isPublicNotesPath(pathname)
   const practiceTopicParam = pathname === '/' ? query.get('topic') : null
   const wasOnAdminPageRef = useRef(onAdminPage)
 
@@ -563,6 +565,8 @@ function App() {
         }}
         onToggleFocus={() => setFocusModeOpen((previous) => !previous)}
         onOpenAdmin={() => navigate('/admin/topics')}
+        onOpenNotes={() => navigate('/notes')}
+        notesActive={onNotesPage}
         isFocusMode={focusModeOpen}
         user={user}
         onLogin={() => {
@@ -572,7 +576,18 @@ function App() {
         onLogout={handleLogout}
       />
 
-      {onAdminPage ? (
+      {onNotesPage ? (
+        // Public: readable without logging in, so no session check first.
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          }
+        >
+          <PublicNotes user={user} pathname={pathname} />
+        </Suspense>
+      ) : onAdminPage ? (
         user || !tokenStore.get() ? (
           <Suspense
             fallback={
