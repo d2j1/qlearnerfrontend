@@ -4,11 +4,13 @@ import { getTopics, listNotes } from '../../api/client'
 import Link from '../../lib/Link'
 import { navigate } from '../../lib/router'
 import { formatRelative, formatSize, generateFromNoteHref, useLoader } from './helpers'
-import { Badge, LoadState, PageHeader, Pager, TagChips, cardClass, inputClass, primaryButtonClass, smallButtonClass } from './ui'
+import { Badge, Banner, LoadState, PageHeader, Pager, TagChips, cardClass, inputClass, primaryButtonClass, smallButtonClass } from './ui'
 
 const PAGE_SIZE = 50
 
-function NotesPage() {
+// Used both for the public reading list (/notes) and the admin Notes tab (/admin/notes).
+// Create/edit/generate controls only render for admins; the backend enforces it too.
+function NotesPage({ isAdmin = false, basePath = '/notes' }) {
   const [topic, setTopic] = useState('')
   const [subtopic, setSubtopic] = useState('')
   const [offset, setOffset] = useState(0)
@@ -26,13 +28,15 @@ function NotesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Admin"
+        eyebrow={isAdmin && basePath.startsWith('/admin') ? 'Admin' : 'Study'}
         title="Notes"
-        subtitle="Study notes the LLM turns into questions."
+        subtitle={isAdmin ? 'Study notes the LLM turns into questions.' : 'Read and revise study notes by topic.'}
         actions={
-          <button type="button" className={primaryButtonClass} onClick={() => navigate('/admin/notes/new')}>
-            <Plus className="h-4 w-4" /> New note
-          </button>
+          isAdmin ? (
+            <button type="button" className={primaryButtonClass} onClick={() => navigate('/admin/notes/new')}>
+              <Plus className="h-4 w-4" /> New note
+            </button>
+          ) : null
         }
       />
 
@@ -69,11 +73,15 @@ function NotesPage() {
         </datalist>
       </div>
 
-      <LoadState loader={notes} label="Loading notes…" />
+      {notes.error && [401, 403].includes(notes.error.status) ? (
+        <Banner tone="warning">Reading notes without logging in isn't available on this server yet.</Banner>
+      ) : (
+        <LoadState loader={notes} label="Loading notes…" />
+      )}
 
       {!notes.loading && !notes.error && !items.length ? (
         <div className="rounded-3xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-300">
-          {topic || subtopic ? 'No notes match these filters.' : 'No notes yet. Write one to start generating questions.'}
+          {topic || subtopic ? 'No notes match these filters.' : isAdmin ? 'No notes yet. Write one to start generating questions.' : 'No notes yet.'}
         </div>
       ) : null}
 
@@ -81,7 +89,7 @@ function NotesPage() {
         {items.map((note) => (
           <li key={note.id} className={cardClass}>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <Link to={`/admin/notes/${encodeURIComponent(note.id)}`} className="min-w-0 flex-1 space-y-2">
+              <Link to={`${basePath}/${encodeURIComponent(note.id)}`} className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="w-full font-semibold text-white hover:text-cyan-200 sm:w-auto">{note.title}</span>
                   <Badge tone="cyan">
@@ -95,22 +103,24 @@ function NotesPage() {
                   <span className="text-xs text-slate-500">Edited {formatRelative(note.updated_at)}</span>
                 </div>
               </Link>
-              <div className="flex w-full gap-2 sm:w-auto sm:flex-col">
-                <button
-                  type="button"
-                  className={`${smallButtonClass} inline-flex flex-1 items-center justify-center gap-1 py-2 sm:flex-none`}
-                  onClick={() => navigate(`/admin/notes/${encodeURIComponent(note.id)}/edit`)}
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
-                <button
-                  type="button"
-                  className={`${smallButtonClass} inline-flex flex-1 items-center justify-center gap-1 py-2 sm:flex-none`}
-                  onClick={() => navigate(generateFromNoteHref(note))}
-                >
-                  <Sparkles className="h-3.5 w-3.5" /> Generate
-                </button>
-              </div>
+              {isAdmin ? (
+                <div className="flex w-full gap-2 sm:w-auto sm:flex-col">
+                  <button
+                    type="button"
+                    className={`${smallButtonClass} inline-flex flex-1 items-center justify-center gap-1 py-2 sm:flex-none`}
+                    onClick={() => navigate(`/admin/notes/${encodeURIComponent(note.id)}/edit`)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={`${smallButtonClass} inline-flex flex-1 items-center justify-center gap-1 py-2 sm:flex-none`}
+                    onClick={() => navigate(generateFromNoteHref(note))}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Generate
+                  </button>
+                </div>
+              ) : null}
             </div>
           </li>
         ))}
